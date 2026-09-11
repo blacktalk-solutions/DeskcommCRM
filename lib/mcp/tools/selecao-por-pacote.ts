@@ -218,3 +218,54 @@ export function textoDaContagem(
   const trecho = totalDoPacote === 1 ? t("capacidade ligada") : t("capacidades ligadas");
   return `${ligadas} ${t("de")} ${totalDoPacote} ${trecho}`;
 }
+
+/**
+ * Ferramentas de agenda que ESCREVEM (marcar/remarcar/confirmar horário) — e
+ * dependem de ferramentas de LEITURA pra funcionar de verdade.
+ *
+ * Medido em produção (issue #6, 11/09/2026): um agente publicado com
+ * `crm_book_appointment` ligado mas SEM `crm_list_event_types` não tem como
+ * saber os slugs válidos de tipo de atendimento (variam por org — "atendimento",
+ * "consulta", "reuniao", etc.). Ele chuta o nome, toda tentativa volta
+ * "tipo_desconhecido", e depois de repetir a mesma promessa ao cliente por
+ * várias mensagens (cada uma vetada e reescrita pelo gate `agenda_stall` até
+ * acertar o TEXTO, não o problema real) o agente escala pra humano — que às
+ * vezes nem existe. O próprio catálogo já documenta isso no comentário de
+ * `crm_list_event_types` (`lib/mcp/tools/catalogo/agendamento.ts`): "a ausência
+ * dela era o defeito".
+ */
+const AGENDA_ESCRITA = [
+  "crm_book_appointment",
+  "crm_reschedule_appointment",
+  "crm_confirm_appointment",
+] as const;
+
+/** Sem ela, toda tentativa de agendar chuta um tipo de atendimento — sempre erra. */
+const AGENDA_LEITURA_OBRIGATORIA = "crm_list_event_types";
+/** Sem ela, o agente marca sem checar a agenda de verdade (pode sugerir horário ocupado). */
+const AGENDA_LEITURA_RECOMENDADA = "crm_find_free_slots";
+
+export interface AvisoDeAgendaIncompleta {
+  /** `crm_list_event_types` ausente — o agente vai chutar tipo de atendimento. */
+  faltaObrigatoria: boolean;
+  /** `crm_find_free_slots` ausente — o agente vai marcar sem checar disponibilidade real. */
+  faltaRecomendada: boolean;
+}
+
+/**
+ * `null` quando a seleção não tem nenhuma ferramenta de ESCREVER agenda (nada
+ * a avisar) ou quando as duas de leitura já estão presentes. Pura — o
+ * `ToolPicker` decide como mostrar o aviso; esta função só decide SE existe.
+ */
+export function avisoDeAgendaIncompleta(
+  selecionadas: ReadonlyArray<string>,
+): AvisoDeAgendaIncompleta | null {
+  const temFerramentaDeEscrita = AGENDA_ESCRITA.some((nome) => selecionadas.includes(nome));
+  if (!temFerramentaDeEscrita) return null;
+
+  const faltaObrigatoria = !selecionadas.includes(AGENDA_LEITURA_OBRIGATORIA);
+  const faltaRecomendada = !selecionadas.includes(AGENDA_LEITURA_RECOMENDADA);
+  if (!faltaObrigatoria && !faltaRecomendada) return null;
+
+  return { faltaObrigatoria, faltaRecomendada };
+}
