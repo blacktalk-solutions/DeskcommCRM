@@ -2813,6 +2813,19 @@ async function executarTurnoDoAgente(
                 },
               };
             case 'failed':
+              // O canal registrou falha no envio — retry consome tentativa (ao
+              // contrário de 'unavailable', que não consome). Faltava chamar
+              // `noteRunError` aqui: sem isto o job terminava 'done' mesmo sem
+              // entrega nenhuma, e a frase "o sistema fará retry" abaixo era
+              // falsa — nada re-tentava, e o cliente ficava sem resposta e sem
+              // nenhum sinal de erro (issue #8; medido: outcome 'failed' contado
+              // em `messages_sent` do log de conclusão sem linha nova em
+              // send_ledger).
+              noteRunError(
+                new Error(
+                  `canal registrou falha no envio (idempotencyKey=${outcome.idempotencyKey}) — job re-tentado pela fila`,
+                ),
+              );
               return {
                 ok: false,
                 error: {
@@ -3932,7 +3945,9 @@ async function executarTurnoDoAgente(
 
     runLog.info('turno do agente concluído', {
       kind: liveJob().kind,
-      messages_sent: outcomes.length,
+      messages_sent: outcomes.filter(
+        (o) => o.kind === 'sent' || o.kind === 'already_sent' || o.kind === 'queued',
+      ).length,
       model: turn.model,
     });
   } finally {
