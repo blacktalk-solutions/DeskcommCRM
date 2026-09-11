@@ -30,6 +30,7 @@ import {
 } from "@/lib/mcp/tools/pacotes";
 import {
   TETO_TOOLS_POR_AGENTE,
+  avisoDeAgendaIncompleta,
   capacidadesAutomaticasDoPacote,
   capacidadesCriticasDoPacote,
   desligarPacote,
@@ -156,6 +157,7 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
   );
 
   const vagas = vagasRestantes(value);
+  const avisoAgenda = avisoDeAgendaIncompleta(value);
   const cheio = vagas <= 0;
 
   /** Ids salvos que o servidor não oferece mais — some da tela seria mentir. */
@@ -253,6 +255,29 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
         >
           {recusa}
         </p>
+      ) : null}
+
+      {avisoAgenda ? (
+        <div
+          data-testid="aviso-agenda-incompleta"
+          className="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400"
+        >
+          <p className="font-medium">{t("Agenda incompleta")}</p>
+          {avisoAgenda.faltaObrigatoria ? (
+            <p>
+              {t(
+                'Você ligou uma ferramenta de marcar/remarcar/confirmar horário sem "Ver o que a empresa atende" (crm_list_event_types). Sem ela, o agente não sabe os tipos de atendimento que existem e vai errar toda tentativa de agendar — chuta um nome, o sistema recusa, e o cliente fica esperando. Ligue também essa capacidade.',
+              )}
+            </p>
+          ) : null}
+          {avisoAgenda.faltaRecomendada ? (
+            <p>
+              {t(
+                'Recomendado também ligar "Ver horários livres na agenda" (crm_find_free_slots) — sem ela o agente marca sem checar a disponibilidade de verdade.',
+              )}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {/* Caminho padrão: pacotes por jornada. */}

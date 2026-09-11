@@ -26,6 +26,7 @@ import {
   vagasRestantes,
   type CapacidadeSelecionavel,
   textoDaContagem,
+  avisoDeAgendaIncompleta,
 } from "@/lib/mcp/tools/selecao-por-pacote";
 
 const TODOS: ReadonlyArray<ToolBundle> = PACOTES.map((p) => p.id);
@@ -206,5 +207,86 @@ describe("texto da contagem — o caminho que saiu do alcance do E2E", () => {
     // Achado pelo Arquiteto (W1) conferindo o merge.
     expect(textoDaContagem(1, 1)).toBe("1 de 1 capacidade ligada");
     expect(textoDaContagem(1, 0)).toBe("0 de 1 capacidade ligada");
+  });
+});
+
+describe("aviso de agenda incompleta (issue #6)", () => {
+  it("sem nenhuma ferramenta de escrever agenda, não avisa nada", () => {
+    expect(avisoDeAgendaIncompleta([])).toBeNull();
+    expect(avisoDeAgendaIncompleta(["crm_search_contacts", "crm_get_lead"])).toBeNull();
+  });
+
+  it("com as duas de leitura presentes, não avisa nada", () => {
+    expect(
+      avisoDeAgendaIncompleta([
+        "crm_book_appointment",
+        "crm_list_event_types",
+        "crm_find_free_slots",
+      ]),
+    ).toBeNull();
+  });
+
+  it("marcar sem crm_list_event_types avisa a falta obrigatória", () => {
+    expect(
+      avisoDeAgendaIncompleta(["crm_book_appointment", "crm_find_free_slots"]),
+    ).toEqual({ faltaObrigatoria: true, faltaRecomendada: false });
+  });
+
+  it("marcar sem crm_find_free_slots avisa só a recomendada", () => {
+    expect(
+      avisoDeAgendaIncompleta(["crm_book_appointment", "crm_list_event_types"]),
+    ).toEqual({ faltaObrigatoria: false, faltaRecomendada: true });
+  });
+
+  it("marcar sem nenhuma das duas avisa as duas", () => {
+    expect(avisoDeAgendaIncompleta(["crm_book_appointment"])).toEqual({
+      faltaObrigatoria: true,
+      faltaRecomendada: true,
+    });
+  });
+
+  it("remarcar e confirmar também disparam o aviso, não só marcar", () => {
+    expect(avisoDeAgendaIncompleta(["crm_reschedule_appointment"])).toEqual({
+      faltaObrigatoria: true,
+      faltaRecomendada: true,
+    });
+    expect(avisoDeAgendaIncompleta(["crm_confirm_appointment"])).toEqual({
+      faltaObrigatoria: true,
+      faltaRecomendada: true,
+    });
+  });
+
+  it("reproduz o caso medido em produção (issue #6): toolset real do agente antes da correção", () => {
+    const toolsAntesDaCorrecao = [
+      "crm_search_contacts",
+      "crm_get_contact",
+      "crm_list_conversations",
+      "crm_get_conversation",
+      "crm_get_conversation_history",
+      "crm_get_queue_status",
+      "crm_get_lead",
+      "crm_search_knowledge",
+      "crm_get_org_memory",
+      "crm_save_org_memory",
+      "crm_list_contact_orders",
+      "crm_search_products",
+      "crm_list_privacy_requests",
+      "crm_list_stages",
+      "crm_list_tags",
+      "crm_list_message_templates",
+      "crm_render_message_template",
+      "crm_list_available_attendants",
+      "crm_list_human_cases",
+      "crm_book_appointment",
+      "crm_cancel_appointment",
+      "crm_set_appointment_outcome",
+      "crm_move_lead_stage",
+      "crm_assign_conversation",
+      "crm_manage_tags",
+    ];
+    expect(avisoDeAgendaIncompleta(toolsAntesDaCorrecao)).toEqual({
+      faltaObrigatoria: true,
+      faltaRecomendada: true,
+    });
   });
 });
