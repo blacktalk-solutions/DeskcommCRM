@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/hooks/i18n/useT";
+import { X } from "@/lib/ui/icons";
 type Draft = {
   id: string;
   revision: string;
@@ -38,15 +39,21 @@ export function ReplyReviewPanel({
   const [edits, setEdits] = useState<Record<string, string>>({}),
     [feedback, setFeedback] = useState(""),
     [busy, setBusy] = useState(false),
+    // Guardado por id, não por boolean: fechar um rascunho não deve esconder o
+    // PRÓXIMO que "Sugerir resposta" gerar (achado no uso real, 11/09/2026 — o
+    // painel não tinha NENHUM jeito de fechar, e ninguém entendia pra que servia).
+    [fechadoId, setFechadoId] = useState<string | null>(null),
     [notice, setNotice] = useState<{
       draftId: string;
       message: string;
       kind: "success" | "error";
     } | null>(null);
   const draft = query.data?.data.drafts[0];
+  const aberto = draft !== undefined && draft.id !== fechadoId;
   const body = draft ? (edits[draft.id] ?? draft.edited_body ?? draft.original_body ?? "") : "";
   async function generate() {
     setNotice(null);
+    setFechadoId(null);
     setBusy(true);
     try {
       await apiClient.post(`/api/v1/conversations/${conversationId}/draft-reply`, {});
@@ -91,6 +98,18 @@ export function ReplyReviewPanel({
       setBusy(false);
     }
   }
+  /**
+   * Fecha o painel de propósito. Uma sugestão PENDENTE não pode só sumir da tela —
+   * ninguém mais saberia que ela existe, e ela ficaria pairando sem decisão pra
+   * sempre. Fechar com pendência ainda aberta rejeita primeiro (mesmo destino de
+   * clicar "Rejeitar"); qualquer outro estado (falhou, já enviada, obsoleta) só
+   * esconde, porque não há decisão nenhuma a tomar.
+   */
+  async function fechar() {
+    if (!draft) return;
+    if (draft.status === "pending") await decide("reject");
+    setFechadoId(draft.id);
+  }
   const statuses: Record<string, string> = {
     generating: "Preparando sugestão…",
     pending: "Sugestão para revisar",
@@ -106,21 +125,43 @@ export function ReplyReviewPanel({
       className="mb-3 space-y-2 rounded-md border bg-muted/30 p-3"
       aria-label={t("Assistência do agente")}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">
-          {t(draft ? (statuses[draft.status] ?? "Assistência do agente") : "Assistência do agente")}
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled || busy}
-          onClick={generate}
-        >
-          {t(busy ? "Preparando…" : "Sugerir resposta")}
-        </Button>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">
+            {t(aberto && draft ? (statuses[draft.status] ?? "Assistência do agente") : "Assistência do agente")}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Peça uma sugestão de resposta escrita pela IA, revise ou edite o texto, e só então aprove o envio ao cliente.",
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled || busy}
+            onClick={generate}
+          >
+            {t(busy ? "Preparando…" : "Sugerir resposta")}
+          </Button>
+          {aberto ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label={t("Fechar")}
+              disabled={busy}
+              onClick={fechar}
+            >
+              <X size={16} weight="regular" aria-hidden />
+            </Button>
+          ) : null}
+        </div>
       </div>
-      {draft && (
+      {aberto && draft && (
         <>
           <p className="text-xs text-muted-foreground">
             {t(
@@ -184,7 +225,8 @@ export function ReplyReviewPanel({
           )}
         </>
       )}
-      {notice &&
+      {aberto &&
+        notice &&
         draft &&
         notice.draftId === draft.id &&
         (notice.kind === "error" ||
