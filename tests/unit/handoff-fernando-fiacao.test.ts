@@ -50,19 +50,25 @@ describe("fiação — caso humano aberto move o lead pra etapa de handoff", () 
   });
 });
 
-describe("fiação — lead urgente represado pelo cap de warm-up gera alerta crítico", () => {
-  it("o bloco de reagendamento por cap checa detectUrgencySignal e abre agent_inbox_items kind='handoff'", () => {
+describe("fiação — represado pelo cap de warm-up sempre gera alerta na Central", () => {
+  it("o bloco de reagendamento por cap checa detectUrgencySignal e abre agent_inbox_items kind='handoff' com severidade condicional", () => {
     const i = FONTE_INBOUND.indexOf("pacingCapVeto !== null && outcomes.length === 0");
     expect(i).toBeGreaterThan(-1);
-    const janela = FONTE_INBOUND.slice(i, i + 2000);
+    const janela = FONTE_INBOUND.slice(i, i + 2500);
     // A fonte do sinal mudou de "a última inbound do histórico" para "todo inbound
     // ainda não respondido", porque o drain COALESCE rajada: um relato de risco
     // que chega na 2ª mensagem entra de carona no job da 1ª e, lido só pela
     // mensagem do job, não existiria. O que esta guarda protege é o mesmo — o
     // bloco do cap CHECA urgência antes de adiar — e agora protege mais.
+    //
+    // O alerta deixou de existir SÓ para o caso urgente (achado em produção,
+    // 11/09/2026: uma mensagem comum — "quero cancelar minha reunião" — ficou
+    // represada pelo cap diário sem NENHUM aviso, porque a versão anterior só
+    // abria o item quando detectUrgencySignal dava positivo). Agora sempre abre;
+    // a urgência só decide a severidade (crítico com sinal, aviso normal sem ele).
     expect(janela).toContain("inboundsPendentes.some((texto) => detectUrgencySignal(texto))");
     expect(janela).toMatch(/kind:\s*'handoff'/);
-    expect(janela).toMatch(/severity:\s*'critical'/);
+    expect(janela).toMatch(/severity:\s*urgente\s*\?\s*'critical'\s*:\s*'warn'/);
   });
 });
 

@@ -3912,32 +3912,44 @@ async function executarTurnoDoAgente(
       // que um "bom dia" qualquer, às vezes horas (medido em produção, tenant YADEA:
       // 20h+ represado num relato de bateria superaquecendo). Sem furar o cap de
       // warm-up/diário em si (proteção anti-banimento — mexer nisso é decisão de
-      // produto, não deste guardrail), abre um alerta CRÍTICO na Central agora, pra um
-      // humano poder responder manualmente pelo próprio WhatsApp enquanto o número
-      // aquece. Dedupe por (kind, ref) — não reabre um já aberto pra esta conversa.
-      if (inboundsPendentes.some((texto) => detectUrgencySignal(texto))) {
-        await insertInboxItem(
-          pool,
-          tenantId,
-          {
-            kind: 'handoff',
-            severity: 'critical',
-            title: 'Lead com sinal de urgência represado pelo cap de envio do número',
-            body:
-              `Mensagem do lead parece relatar risco/urgência, mas o número está em ` +
-              `warm-up/bateu o cap diário (${veto.code}) — a resposta automática só sai em ` +
-              `${veto.nextAllowedAt.toISOString()}. Considere responder manualmente pelo ` +
-              `WhatsApp enquanto o número aquece.`,
-            refKind: 'conversation',
-            refId: input.conversationId,
-          },
-          'kind_e_ref',
-        ).catch((err) => {
-          runLog.warn('alerta de urgência represada por warmup_cap falhou (best-effort)', {
-            error: err instanceof Error ? err.message : String(err),
-          });
+      // produto, não deste guardrail), abre um alerta na Central agora, pra um humano
+      // poder responder manualmente pelo próprio WhatsApp enquanto o número aquece.
+      //
+      // SEMPRE abre — não só quando há sinal de urgência. Medido em produção
+      // (11/09/2026): um teste comum ("quero cancelar minha reunião") ficou represado
+      // pelo cap diário sem NENHUM aviso em lugar nenhum, porque a versão anterior só
+      // alertava se `detectUrgencySignal` desse positivo — o dono só descobriu porque
+      // testou e percebeu o silêncio, não porque o sistema avisou. Um cliente sem
+      // sinal de urgência no texto também merece saber que a IA parou de responder;
+      // a severidade é que muda (crítico com urgência, aviso normal sem ela), não a
+      // existência do alerta. Dedupe por (kind, ref) — não reabre um já aberto pra
+      // esta conversa.
+      const urgente = inboundsPendentes.some((texto) => detectUrgencySignal(texto));
+      await insertInboxItem(
+        pool,
+        tenantId,
+        {
+          kind: 'handoff',
+          severity: urgente ? 'critical' : 'warn',
+          title: urgente
+            ? 'Lead com sinal de urgência represado pelo cap de envio do número'
+            : 'Resposta automática pausada pelo cap de envio do número',
+          body:
+            (urgente
+              ? 'Mensagem do lead parece relatar risco/urgência, mas o '
+              : 'O ') +
+            `número está em warm-up/bateu o cap diário (${veto.code}) — a resposta ` +
+            `automática só sai em ${veto.nextAllowedAt.toISOString()}. Considere ` +
+            `responder manualmente pelo WhatsApp enquanto o número aquece.`,
+          refKind: 'conversation',
+          refId: input.conversationId,
+        },
+        'kind_e_ref',
+      ).catch((err) => {
+        runLog.warn('alerta de cap de envio represado falhou (best-effort)', {
+          error: err instanceof Error ? err.message : String(err),
         });
-      }
+      });
       throw new JobSettledError(
         'cap de envio atingido — job reagendado para a próxima abertura, sem mensagem enviada',
       );
