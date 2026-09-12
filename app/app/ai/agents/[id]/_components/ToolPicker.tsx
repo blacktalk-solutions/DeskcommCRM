@@ -18,6 +18,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { apiClient } from "@/lib/api/client";
@@ -280,6 +281,49 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
         </div>
       ) : null}
 
+      {/* Modo avançado, perto do topo e como botão de verdade — não link de
+          texto no rodapé da tela (issue #1: o controle de marcar uma
+          capacidade específica era fácil de nunca achar, principalmente no
+          celular, porque ficava depois dos 6 blocos de pacote). */}
+      <div className="space-y-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid="toggle-avancado"
+          aria-expanded={avancado}
+          onClick={() => setAvancado((v) => !v)}
+        >
+          {avancado ? t("Esconder a lista completa") : t("Escolher uma a uma (modo avançado)")}
+        </Button>
+
+        {avancado ? (
+          <div
+            data-testid="lista-avancada"
+            className="space-y-1 rounded-md border border-border/60 p-3"
+          >
+            <p className="pb-1 text-xs text-muted-foreground">
+              {t(
+                "Cada linha é uma capacidade. O nome em cinza é como ela aparece para quem integra o sistema por fora.",
+              )}
+            </p>
+            {catalogo.map((capacidade) => {
+              const marcada = value.includes(capacidade.name);
+              return (
+                <FichaCapacidade
+                  key={capacidade.name}
+                  capacidade={capacidade}
+                  marcada={marcada}
+                  bloqueada={!marcada && cheio}
+                  onToggle={() => alternarCapacidade(capacidade.name)}
+                  disabled={disabled}
+                  mostrarNomeTecnico
+                />
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
       {/* Caminho padrão: pacotes por jornada. */}
       <div className="grid gap-3">
         {PACOTES.map((pacote) => {
@@ -358,46 +402,6 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
             </div>
           );
         })}
-      </div>
-
-      {/* Modo avançado: a lista inteira, capacidade por capacidade. */}
-      <div className="space-y-2">
-        <button
-          type="button"
-          data-testid="toggle-avancado"
-          aria-expanded={avancado}
-          onClick={() => setAvancado((v) => !v)}
-          className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-        >
-          {avancado ? t("Esconder a lista completa") : t("Escolher uma a uma (modo avançado)")}
-        </button>
-
-        {avancado ? (
-          <div
-            data-testid="lista-avancada"
-            className="space-y-1 rounded-md border border-border/60 p-3"
-          >
-            <p className="pb-1 text-xs text-muted-foreground">
-              {t(
-                "Cada linha é uma capacidade. O nome em cinza é como ela aparece para quem integra o sistema por fora.",
-              )}
-            </p>
-            {catalogo.map((capacidade) => {
-              const marcada = value.includes(capacidade.name);
-              return (
-                <FichaCapacidade
-                  key={capacidade.name}
-                  capacidade={capacidade}
-                  marcada={marcada}
-                  bloqueada={!marcada && cheio}
-                  onToggle={() => alternarCapacidade(capacidade.name)}
-                  disabled={disabled}
-                  mostrarNomeTecnico
-                />
-              );
-            })}
-          </div>
-        ) : null}
       </div>
 
       {orfas.length > 0 ? (
