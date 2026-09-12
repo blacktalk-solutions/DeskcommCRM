@@ -16556,6 +16556,42 @@ update public.ai_agent_versions v
  where v.agent_id = sub.agent_id
    and v.knowledge_source_ids = '{}'::uuid[];
 
+-- ---- atraso "humano" configurável por agente (migration 0233) ----
+-- Quatro colunas nullable; null = default do sistema (ver
+-- lib/agent-engine/agent/atraso-humano.ts). Mesmo padrão de
+-- split_messages/split_max_chars nesta tabela, não organizations.settings —
+-- ver o cabeçalho da migration 0233 para o raciocínio completo. Precisa vir
+-- ANTES da recriação do trigger de imutabilidade logo abaixo, que passa a
+-- referenciar estas colunas — e antes de qualquer UPDATE nesta tabela mais
+-- adiante no arquivo, que dispararia esse trigger contra colunas inexistentes.
+alter table public.ai_agent_versions
+  add column if not exists human_delay_base_ms integer,
+  add column if not exists human_delay_ms_per_char integer,
+  add column if not exists human_delay_min_ms integer,
+  add column if not exists human_delay_max_ms integer;
+
+alter table public.ai_agent_versions
+  drop constraint if exists ai_agent_versions_human_delay_base_ms_check,
+  drop constraint if exists ai_agent_versions_human_delay_ms_per_char_check,
+  drop constraint if exists ai_agent_versions_human_delay_min_ms_check,
+  drop constraint if exists ai_agent_versions_human_delay_max_ms_check,
+  drop constraint if exists ai_agent_versions_human_delay_min_le_max_check;
+alter table public.ai_agent_versions
+  add constraint ai_agent_versions_human_delay_base_ms_check
+    check (human_delay_base_ms is null or human_delay_base_ms >= 0),
+  add constraint ai_agent_versions_human_delay_ms_per_char_check
+    check (human_delay_ms_per_char is null or human_delay_ms_per_char >= 0),
+  add constraint ai_agent_versions_human_delay_min_ms_check
+    check (human_delay_min_ms is null or human_delay_min_ms >= 0),
+  add constraint ai_agent_versions_human_delay_max_ms_check
+    check (human_delay_max_ms is null or human_delay_max_ms >= 0),
+  add constraint ai_agent_versions_human_delay_min_le_max_check
+    check (
+      human_delay_min_ms is null
+      or human_delay_max_ms is null
+      or human_delay_min_ms <= human_delay_max_ms
+    );
+
 -- CONSERTO OBRIGATÓRIO no mesmo bloco: escopo de leitura editável numa versão
 -- PUBLICADA sem virar versão nova é a própria ausência de escopo, com aparência
 -- de controle.
@@ -16588,6 +16624,10 @@ begin
     or new.operator_tool_ids      is distinct from old.operator_tool_ids
     or new.pipeline_ids           is distinct from old.pipeline_ids
     or new.knowledge_source_ids   is distinct from old.knowledge_source_ids
+    or new.human_delay_base_ms    is distinct from old.human_delay_base_ms
+    or new.human_delay_ms_per_char is distinct from old.human_delay_ms_per_char
+    or new.human_delay_min_ms     is distinct from old.human_delay_min_ms
+    or new.human_delay_max_ms     is distinct from old.human_delay_max_ms
     or new.version_number         is distinct from old.version_number
     or new.agent_id               is distinct from old.agent_id
     or new.organization_id        is distinct from old.organization_id
