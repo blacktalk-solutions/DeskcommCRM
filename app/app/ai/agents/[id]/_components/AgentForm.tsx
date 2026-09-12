@@ -64,6 +64,12 @@ import {
 import type { SelectableChannel as ChannelSessionLite } from "@/lib/channels/selectable";
 import type { AgentRow } from "@/hooks/ai/useAgent";
 import type { AgentVersionRow } from "@/hooks/ai/useAgentVersions";
+import {
+  ATRASO_NOTAR_MS,
+  MS_POR_CARACTERE,
+  ATRASO_MINIMO_MS,
+  ATRASO_MAXIMO_MS,
+} from "@/lib/agent-engine/agent/atraso-humano";
 import type { CredentialRow, Provider } from "@/hooks/ai/useCredentials";
 import { credentialStatus } from "@/hooks/ai/useCredentials";
 import type { FunilDaResposta } from "@/hooks/pipelines/usePipelines";
@@ -152,6 +158,11 @@ interface FormState {
   cases_enabled: boolean;
   split_messages: boolean;
   split_max_chars: number;
+  /** "" = usa o default do sistema (vira null no payload). Ver atraso-humano.ts. */
+  human_delay_base_ms: string;
+  human_delay_ms_per_char: string;
+  human_delay_min_ms: string;
+  human_delay_max_ms: string;
   followup: FollowupValue;
   // Papel OPERADOR (spec 16 §3.2) — o que mexe no sistema depois da conversa.
   operator_enabled: boolean;
@@ -214,6 +225,10 @@ function buildState(args: {
     cases_enabled: version?.cases_enabled ?? false,
     split_messages: version?.split_messages ?? false,
     split_max_chars: version?.split_max_chars ?? 600,
+    human_delay_base_ms: version?.human_delay_base_ms != null ? String(version.human_delay_base_ms) : "",
+    human_delay_ms_per_char: version?.human_delay_ms_per_char != null ? String(version.human_delay_ms_per_char) : "",
+    human_delay_min_ms: version?.human_delay_min_ms != null ? String(version.human_delay_min_ms) : "",
+    human_delay_max_ms: version?.human_delay_max_ms != null ? String(version.human_delay_max_ms) : "",
     followup: version?.followup ?? DEFAULT_FOLLOWUP,
     operator_enabled: version?.operator_enabled ?? false,
     // O form usa "" onde o banco usa null — Select controlado não aceita null.
@@ -247,6 +262,12 @@ function toCadastroPayload(s: FormState) {
   };
 }
 
+/** "" (campo em branco = usa o default do sistema) → null. Ver atraso-humano.ts. */
+function numeroOuNull(v: string): number | null {
+  const t = v.trim();
+  return t === "" ? null : Number(t);
+}
+
 function toVersionPayload(s: FormState) {
   return {
     system_prompt: s.system_prompt,
@@ -267,6 +288,10 @@ function toVersionPayload(s: FormState) {
     cases_enabled: s.cases_enabled,
     split_messages: s.split_messages,
     split_max_chars: s.split_max_chars,
+    human_delay_base_ms: numeroOuNull(s.human_delay_base_ms),
+    human_delay_ms_per_char: numeroOuNull(s.human_delay_ms_per_char),
+    human_delay_min_ms: numeroOuNull(s.human_delay_min_ms),
+    human_delay_max_ms: numeroOuNull(s.human_delay_max_ms),
     followup: s.followup,
     operator_enabled: s.operator_enabled,
     // "" (não escolheu) → null (herda o do Conversador). São o mesmo conceito em
@@ -365,6 +390,17 @@ export function AgentForm(props: Props) {
       errors.channel_session_id = t("Escolha por qual número de WhatsApp ele atende.");
     if (form.tool_ids.length > TETO_TOOLS_POR_AGENTE)
       errors.tool_ids = `${t("Máximo de")} ${TETO_TOOLS_POR_AGENTE} ${t("capacidades por agente.")}`;
+    // O schema zod não checa min<=max (versionShapeSchema não pode virar
+    // ZodEffects sem perder .partial()) — a checagem cruzada mora só na
+    // constraint do banco e aqui, pra não estourar como erro genérico do
+    // servidor depois de a pessoa preencher os dois campos.
+    {
+      const minMs = numeroOuNull(form.human_delay_min_ms);
+      const maxMs = numeroOuNull(form.human_delay_max_ms);
+      if (minMs !== null && maxMs !== null && minMs > maxMs) {
+        errors.human_delay_max_ms = t("A espera máxima não pode ser menor que a mínima.");
+      }
+    }
 
     // Tenta o schema completo:
     if (Object.keys(errors).length === 0) {
@@ -997,6 +1033,81 @@ export function AgentForm(props: Props) {
                 ) : null}
               </div>
             ) : null}
+          </Card>
+
+          {/* Tempo de resposta (atraso "humano" antes da 1ª bolha — issue #5) */}
+          <Card className="space-y-3 p-4">
+            <h3 className="text-sm font-medium">{t("Tempo de resposta")}</h3>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'Antes de mandar a primeira mensagem, o agente espera um pouco e mostra "digitando…" — assim não parece um robô respondendo na hora. Deixe em branco para usar o padrão do sistema.',
+              )}
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="human_delay_min_ms">{t("Espera mínima (ms)")}</Label>
+                <Input
+                  id="human_delay_min_ms"
+                  type="number"
+                  min={0}
+                  step={100}
+                  placeholder={String(ATRASO_MINIMO_MS)}
+                  value={form.human_delay_min_ms}
+                  onChange={(e) => patch({ human_delay_min_ms: e.target.value })}
+                  disabled={disabled}
+                  aria-invalid={!!validation.human_delay_min_ms}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="human_delay_max_ms">{t("Espera máxima (ms)")}</Label>
+                <Input
+                  id="human_delay_max_ms"
+                  type="number"
+                  min={0}
+                  step={100}
+                  placeholder={String(ATRASO_MAXIMO_MS)}
+                  value={form.human_delay_max_ms}
+                  onChange={(e) => patch({ human_delay_max_ms: e.target.value })}
+                  disabled={disabled}
+                  aria-invalid={!!validation.human_delay_max_ms}
+                />
+                {validation.human_delay_max_ms ? (
+                  <p className="text-xs text-destructive">{validation.human_delay_max_ms}</p>
+                ) : null}
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="human_delay_base_ms">
+                  {t("Espera fixa antes de começar a digitar (ms)")}
+                </Label>
+                <Input
+                  id="human_delay_base_ms"
+                  type="number"
+                  min={0}
+                  step={100}
+                  placeholder={String(ATRASO_NOTAR_MS)}
+                  value={form.human_delay_base_ms}
+                  onChange={(e) => patch({ human_delay_base_ms: e.target.value })}
+                  disabled={disabled}
+                  aria-invalid={!!validation.human_delay_base_ms}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="human_delay_ms_per_char">
+                  {t("Milissegundos por caractere da resposta")}
+                </Label>
+                <Input
+                  id="human_delay_ms_per_char"
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder={String(MS_POR_CARACTERE)}
+                  value={form.human_delay_ms_per_char}
+                  onChange={(e) => patch({ human_delay_ms_per_char: e.target.value })}
+                  disabled={disabled}
+                  aria-invalid={!!validation.human_delay_ms_per_char}
+                />
+              </div>
+            </div>
           </Card>
 
           {/* Capacidades */}

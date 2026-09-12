@@ -121,3 +121,70 @@ describe("esperarComoHumano", () => {
     expect(ms).toBe(calcularAtrasoHumano(texto));
   });
 });
+
+describe("calcularAtrasoHumano — override por agente (issue #5)", () => {
+  it("sem config, usa as constantes do sistema (comportamento de sempre)", () => {
+    expect(calcularAtrasoHumano("Oi, tudo bem?")).toBe(
+      calcularAtrasoHumano("Oi, tudo bem?", undefined),
+    );
+    expect(calcularAtrasoHumano("Oi, tudo bem?", {})).toBe(ATRASO_MINIMO_MS);
+  });
+
+  it("campo omitido ou null no config cai na constante — não é um valor de zero", () => {
+    const comNull = calcularAtrasoHumano("texto de tamanho médio para o teste aqui", {
+      notarMs: null,
+      msPorCaractere: null,
+      minimoMs: null,
+      maximoMs: null,
+    });
+    const semConfig = calcularAtrasoHumano("texto de tamanho médio para o teste aqui");
+    expect(comNull).toBe(semConfig);
+  });
+
+  it("minimoMs configurado sobe o piso de uma resposta curta", () => {
+    const piso = calcularAtrasoHumano("Oi!", { minimoMs: 3000 });
+    expect(piso).toBe(3000);
+  });
+
+  it("maximoMs configurado corta o teto de um texto longo", () => {
+    const paragrafo = "a".repeat(4000);
+    const teto = calcularAtrasoHumano(paragrafo, { maximoMs: 4000 });
+    expect(teto).toBe(4000);
+  });
+
+  it("notarMs configurado muda a parcela fixa, mesmo em texto vazio", () => {
+    // minimoMs alto o bastante para não mascarar a mudança no clamp.
+    const atraso = calcularAtrasoHumano("", { notarMs: 5000, minimoMs: 0, maximoMs: 15000 });
+    expect(atraso).toBe(5000);
+  });
+
+  it("msPorCaractere configurado muda a taxa de crescimento com o texto", () => {
+    const texto = "a".repeat(100);
+    const lento = calcularAtrasoHumano(texto, { msPorCaractere: 1, minimoMs: 0, maximoMs: 15000 });
+    const rapido = calcularAtrasoHumano(texto, {
+      msPorCaractere: 50,
+      minimoMs: 0,
+      maximoMs: 15000,
+    });
+    expect(rapido).toBeGreaterThan(lento);
+  });
+
+  it("configurar só um dos quatro campos não reseta os outros três pro zero", () => {
+    // Regressão do tipo de bug mais fácil de escrever aqui: um objeto parcial
+    // devolvendo `undefined` nos campos que ninguém tocou, e `?? valor` sendo
+    // trocado por algo que trata `undefined` como zero em vez de "use o default".
+    const soMinimo = calcularAtrasoHumano("Oi, tudo bem?", { minimoMs: 1200 });
+    expect(soMinimo).toBe(ATRASO_MINIMO_MS);
+  });
+});
+
+describe("esperarComoHumano — override por agente (issue #5)", () => {
+  it("repassa o config pra calcularAtrasoHumano — a espera de verdade muda", async () => {
+    const texto = "Oi!";
+    const sleep = vi.fn(async () => undefined);
+
+    await esperarComoHumano({ texto, sleep, log: logDeTeste(), config: { minimoMs: 4000 } });
+
+    expect(sleep).toHaveBeenCalledWith(4000);
+  });
+});

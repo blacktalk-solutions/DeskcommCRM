@@ -39,6 +39,15 @@
  * continua sendo o jitter anti-ban (1.2s + ≤800ms) que já existia — são coisas
  * diferentes com donos diferentes, e somá-las numa só apagaria o throttle que
  * protege o número de banimento.
+ *
+ * ─── Configurável por agente (issue #5) ─────────────────────────────────────
+ *
+ * Os quatro números eram constantes fixas — o dono de uma organização não
+ * tinha como ajustar, só editando este arquivo e reconstruindo a imagem.
+ * `ai_agent_versions.human_delay_*` (migration 0233) guarda o override por
+ * agente publicado; `null` em qualquer um dos quatro usa a constante daqui.
+ * As constantes continuam sendo o DEFAULT e o fallback — não algo que este
+ * arquivo pare de possuir.
  */
 import type { Logger } from '../obs/logger';
 
@@ -55,13 +64,38 @@ export const ATRASO_MINIMO_MS = 1200;
 export const ATRASO_MAXIMO_MS = 7500;
 
 /**
+ * Override por agente (issue #5) — todo campo omitido ou `null` cai na
+ * constante correspondente. Vem de `ai_agent_versions.human_delay_*`; quem
+ * monta este objeto (inbound-turn.ts, a partir de `agentConfig`) já recebeu
+ * os valores validados pelas CHECK constraints da coluna (>= 0, min <= max).
+ */
+export interface ConfigDeAtrasoHumano {
+  notarMs?: number | null;
+  msPorCaractere?: number | null;
+  minimoMs?: number | null;
+  maximoMs?: number | null;
+}
+
+/**
  * Quanto esperar antes de mandar `texto`, em ms. Pura — é o que a torna
  * testável sem relógio e sem canal.
+ *
+ * `Math.max(0, ...)` nos overrides é a última linha de defesa, não a
+ * primeira: a CHECK constraint do banco já recusa negativo e min > max na
+ * origem (`ai_agent_versions.human_delay_*`, migration 0233). Existe aqui
+ * porque esta função também é chamada direto em teste, sem passar pela
+ * coluna — uma função pura não deveria confiar em quem a chama para nunca
+ * mandar um número fora do domínio dela.
  */
-export function calcularAtrasoHumano(texto: string): number {
+export function calcularAtrasoHumano(texto: string, config?: ConfigDeAtrasoHumano): number {
+  const notar = Math.max(0, config?.notarMs ?? ATRASO_NOTAR_MS);
+  const porCaractere = Math.max(0, config?.msPorCaractere ?? MS_POR_CARACTERE);
+  const minimo = Math.max(0, config?.minimoMs ?? ATRASO_MINIMO_MS);
+  const maximo = Math.max(0, config?.maximoMs ?? ATRASO_MAXIMO_MS);
+
   const comprimento = (texto ?? '').trim().length;
-  const bruto = ATRASO_NOTAR_MS + MS_POR_CARACTERE * comprimento;
-  return Math.min(ATRASO_MAXIMO_MS, Math.max(ATRASO_MINIMO_MS, bruto));
+  const bruto = notar + porCaractere * comprimento;
+  return Math.min(maximo, Math.max(minimo, bruto));
 }
 
 export interface EsperaHumanaArgs {
@@ -75,6 +109,8 @@ export interface EsperaHumanaArgs {
    * instantaneamente) continua valendo.
    */
   sinalizarDigitando?: () => Promise<void>;
+  /** Override por agente (issue #5) — omitido = todas as constantes do sistema. */
+  config?: ConfigDeAtrasoHumano;
 }
 
 /**
@@ -89,7 +125,7 @@ export interface EsperaHumanaArgs {
  * os segundos de silêncio sem a explicação visual que os torna naturais.
  */
 export async function esperarComoHumano(args: EsperaHumanaArgs): Promise<number> {
-  const ms = calcularAtrasoHumano(args.texto);
+  const ms = calcularAtrasoHumano(args.texto, args.config);
 
   if (args.sinalizarDigitando !== undefined) {
     try {

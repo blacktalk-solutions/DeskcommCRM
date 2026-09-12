@@ -2655,6 +2655,12 @@ async function executarTurnoDoAgente(
                     texto: primeiraBolha,
                     sleep: deps.sleep ?? ((s) => new Promise((resolve) => setTimeout(resolve, s))),
                     log: runLog,
+                    config: {
+                      notarMs: agentConfig?.humanDelayBaseMs,
+                      msPorCaractere: agentConfig?.humanDelayMsPerChar,
+                      minimoMs: agentConfig?.humanDelayMinMs,
+                      maximoMs: agentConfig?.humanDelayMaxMs,
+                    },
                     ...(canal.signalTyping
                       ? {
                           sinalizarDigitando: (): Promise<void> =>

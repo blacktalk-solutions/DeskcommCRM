@@ -115,6 +115,17 @@ const versionShapeSchema = z
     // pelo pacing anti-ban. Defaults espelham a migration 0059.
     split_messages: z.boolean().default(false),
     split_max_chars: z.number().int().min(80).max(4000).default(600),
+    // Atraso "humano" antes da 1ª bolha da resposta (issue #5) — null em
+    // qualquer um dos quatro usa o default do sistema, ver
+    // lib/agent-engine/agent/atraso-humano.ts (a fórmula e o porquê dos
+    // números vivem lá, não aqui). Sem `.refine()` de min <= max: o schema
+    // base precisa continuar aceitando `.partial()` (versionPatchSchema), e
+    // `.refine()` devolve um ZodEffects que não tem esse método. A checagem
+    // cruzada mora na constraint do banco (fonte da verdade de qualquer jeito).
+    human_delay_base_ms: z.number().int().min(0).max(10000).nullable().default(null),
+    human_delay_ms_per_char: z.number().int().min(0).max(200).nullable().default(null),
+    human_delay_min_ms: z.number().int().min(0).max(15000).nullable().default(null),
+    human_delay_max_ms: z.number().int().min(0).max(15000).nullable().default(null),
     followup: followupConfigSchema,
     // ── Papel OPERADOR (spec 16 §3.2) ───────────────────────────────────────
     // Todos com `.default(...)`, e é o que mantém retrocompatível: agent e
