@@ -280,8 +280,31 @@ function CartaoDoPonto({
   const [credentialId, setCredentialId] = useState(ponto.efetivo.credentialId ?? "");
   const [baseUrl, setBaseUrl] = useState(ponto.efetivo.baseUrl ?? "");
   const [salvando, setSalvando] = useState(false);
+  const [buscaModelo, setBuscaModelo] = useState("");
 
   const modelosDoProvider = dados.modelos.filter((m) => m.provider === provider);
+  // Ordena por fabricante (prefixo antes de "/" no model_id) e depois por
+  // nome, e filtra pelo texto de busca — a OpenRouter devolve ~437 modelos na
+  // ordem crua da própria API, sem previsibilidade nenhuma pra achar algo
+  // (issue #2).
+  const modelosOrdenados = useMemo(
+    () =>
+      [...modelosDoProvider].sort((a, b) => {
+        const fa = a.model_id.split("/")[0] ?? "";
+        const fb = b.model_id.split("/")[0] ?? "";
+        return fa !== fb ? fa.localeCompare(fb) : a.display_name.localeCompare(b.display_name);
+      }),
+    [modelosDoProvider],
+  );
+  const modelosFiltrados = useMemo(() => {
+    const termo = buscaModelo.trim().toLowerCase();
+    if (!termo) return modelosOrdenados;
+    return modelosOrdenados.filter(
+      (m) =>
+        m.display_name.toLowerCase().includes(termo) ||
+        m.model_id.toLowerCase().includes(termo),
+    );
+  }, [modelosOrdenados, buscaModelo]);
   const credsDoProvider = dados.credenciais.filter((c) => c.provider === provider);
   // Endpoint próprio só faz sentido em provedor compatível com a API da OpenAI
   // — é a mesma condição que `lib/ai/pontos/provedores.ts` declara e que o
@@ -434,19 +457,35 @@ function CartaoDoPonto({
                 </p>
               </>
             ) : (
-              <Select value={modelId} onValueChange={setModelId}>
-                <SelectTrigger data-testid={`modelo-${ponto.id}`}>
-                  <SelectValue placeholder={t("escolha")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelosDoProvider.map((m) => (
-                    <SelectItem key={m.model_id} value={m.model_id}>
-                      {m.display_name}
-                      {ponto.exige.tools && !m.supports_tools ? ` — ${t("sem ferramentas")}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <>
+                {modelosDoProvider.length > 8 ? (
+                  <Input
+                    value={buscaModelo}
+                    onChange={(e) => setBuscaModelo(e.target.value)}
+                    placeholder={t("Buscar por nome ou fabricante…")}
+                    aria-label={t("Buscar modelo")}
+                    className="mb-1"
+                  />
+                ) : null}
+                <Select value={modelId} onValueChange={setModelId}>
+                  <SelectTrigger data-testid={`modelo-${ponto.id}`}>
+                    <SelectValue placeholder={t("escolha")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelosFiltrados.map((m) => (
+                      <SelectItem key={m.model_id} value={m.model_id}>
+                        {m.display_name}
+                        {ponto.exige.tools && !m.supports_tools ? ` — ${t("sem ferramentas")}` : ""}
+                      </SelectItem>
+                    ))}
+                    {modelosFiltrados.length === 0 ? (
+                      <SelectItem value="__none__" disabled>
+                        {t("Nenhum modelo encontrado para essa busca")}
+                      </SelectItem>
+                    ) : null}
+                  </SelectContent>
+                </Select>
+              </>
             )}
           </div>
 
