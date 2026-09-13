@@ -15,6 +15,19 @@ describe("splitIntoBubbles", () => {
     const out = splitIntoBubbles("Primeiro parágrafo.\n\nSegundo parágrafo.", 30);
     expect(out).toEqual(["Primeiro parágrafo.", "Segundo parágrafo."]);
   });
+  it("dois parágrafos curtos viram DUAS bolhas mesmo cabendo juntos no teto (issue 2026-09-13)", () => {
+    // maxChars=600 (default do produto) e os dois parágrafos juntos, com a
+    // quebra de linha, teriam menos de 600 caracteres — mas quem escreveu em
+    // dois parágrafos queria duas mensagens, não uma só com quebra de linha.
+    const out = splitIntoBubbles(
+      "Olá, Thie! O tempo para o site ficar pronto pode variar.\n\nO que você acha de agendarmos um diagnóstico?",
+      600,
+    );
+    expect(out).toEqual([
+      "Olá, Thie! O tempo para o site ficar pronto pode variar.",
+      "O que você acha de agendarmos um diagnóstico?",
+    ]);
+  });
   it("nenhuma bolha excede maxChars (quebra por sentença)", () => {
     const text = "Oi! Como você está hoje? Queria falar do seu pedido. Ele já saiu para entrega.";
     const out = splitIntoBubbles(text, 30);

@@ -1,43 +1,53 @@
 /**
  * Quebra o texto da resposta em "bolhas" curtas (Onda 4) — parágrafo → sentença
- * → palavra, juntando pedaços adjacentes que caibam em maxChars. Puro. Usado no
- * send do agente quando split_messages está on; o pacing anti-ban espaça cada
- * bolha. Nunca devolve bolha vazia nem (salvo palavra atômica gigante) > maxChars.
+ * → palavra. Puro. Usado no send do agente quando split_messages está on; o
+ * pacing anti-ban espaça cada bolha. Nunca devolve bolha vazia nem (salvo
+ * palavra atômica gigante) > maxChars.
+ *
+ * PARÁGRAFO É FRONTEIRA DE BOLHA, SEMPRE — nunca junta dois parágrafos na
+ * mesma bolha, mesmo quando os dois juntos caberiam em maxChars. Medido em
+ * produção (2026-09-13): um agente com maxChars=600 mandava dois parágrafos
+ * de ~200 caracteres cada como UMA bolha só, porque a versão anterior desta
+ * função só quebrava por parágrafo quando o texto INTEIRO estourava o teto —
+ * quem escreveu em dois parágrafos queria dois pensamentos separados, e o
+ * cliente via um bloco só, sem a pausa "como gente digitando" que o recurso
+ * promete. Sentenças DENTRO do mesmo parágrafo continuam juntando até o teto
+ * (é aí que "juntar o que couber" ainda faz sentido: partir "Oi! Tudo bem?"
+ * em duas bolhas seria fragmentação artificial que ninguém pediu).
  */
 export function splitIntoBubbles(text: string, maxChars: number): string[] {
   const trimmed = (text ?? "").trim();
   if (trimmed === "") return [];
-  if (trimmed.length <= maxChars) return [trimmed];
 
-  // Unidades atômicas: parágrafos → sentenças. Cada unidade que ainda estoura é
-  // quebrada por palavra.
-  const units: string[] = [];
+  const bubbles: string[] = [];
   for (const para of trimmed.split(/\n{2,}/)) {
     const p = para.trim();
     if (p === "") continue;
     if (p.length <= maxChars) {
-      units.push(p);
+      bubbles.push(p);
       continue;
     }
+
+    // Parágrafo maior que o teto: quebra por sentença, juntando sentenças
+    // adjacentes DESTE MESMO parágrafo enquanto couberem — a fronteira de
+    // bolha aqui é a sentença/palavra, não mais o parágrafo.
+    const units: string[] = [];
     for (const sentence of splitSentences(p)) {
       if (sentence.length <= maxChars) units.push(sentence);
       else units.push(...splitWords(sentence, maxChars));
     }
-  }
-
-  // Junta unidades adjacentes enquanto couberem (com espaço).
-  const bubbles: string[] = [];
-  let cur = "";
-  for (const u of units) {
-    const joined = cur === "" ? u : `${cur} ${u}`;
-    if (joined.length <= maxChars) {
-      cur = joined;
-    } else {
-      if (cur !== "") bubbles.push(cur);
-      cur = u;
+    let cur = "";
+    for (const u of units) {
+      const joined = cur === "" ? u : `${cur} ${u}`;
+      if (joined.length <= maxChars) {
+        cur = joined;
+      } else {
+        if (cur !== "") bubbles.push(cur);
+        cur = u;
+      }
     }
+    if (cur !== "") bubbles.push(cur);
   }
-  if (cur !== "") bubbles.push(cur);
   return bubbles;
 }
 
