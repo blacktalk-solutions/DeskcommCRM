@@ -485,7 +485,7 @@ export async function listaAgendamentos(
   let q = supabase
     .from("calendar_appointments")
     .select(
-      "id, title, starts_at, ends_at, time_zone, status, revision, meeting_state, meeting_url, owner_user_id, contact_id, contacts(name, display_name)",
+      "id, title, starts_at, ends_at, time_zone, status, revision, meeting_state, meeting_url, owner_user_id, contact_id, guest_email, contacts(name, display_name)",
     )
     .eq("organization_id", organizationId)
     .order("starts_at", { ascending: true })
@@ -547,6 +547,11 @@ export async function listaAgendamentos(
       situacao: String(l.status),
       donoId: l.owner_user_id ? String(l.owner_user_id) : null,
       contatoId: l.contact_id ? String(l.contact_id) : null,
+      // Sem isto o agente não tem como saber, ao remarcar, se já existe convite
+      // no Google — perguntaria o e-mail de novo, ou nunca perguntaria porque
+      // achou (sem checar) que já tinha. `crm_reschedule_appointment` é o único
+      // chamador que precisa disto hoje.
+      emailConvidado: l.guest_email ? String(l.guest_email) : null,
       // O ID sozinho não serve a nenhum dos dois consumidores: a grade precisa do
       // nome para dizer "com quem", e o AGENTE recebia um uuid cru onde devia
       // dizer "você já tem consulta marcada, Maria". Mesma coluna que a tela do
