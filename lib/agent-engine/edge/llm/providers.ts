@@ -80,6 +80,47 @@ export function cabecalhosDeAtribuicaoOpenRouter(): Record<string, string> | und
  * (createFakeRegistry, sem fetch real); este caminho só é exercitado pelo smoke
  * (rede real → endpoint canônico do provider allowlistado).
  */
+/**
+ * `stable-prefix.ts` monta `providerOptions.anthropic.cacheControl` (F2-17,
+ * regra 15) — mas o provider REAL usado aqui pra OpenRouter é `@ai-sdk/openai`
+ * (endpoint OpenAI-compatível, ver comentário de `OPENROUTER_ENDPOINT` acima).
+ * O `@ai-sdk/openai` instalado (4.0.56) não tem NENHUMA noção de `cacheControl`
+ * — não é que ele traduza errado, é que o campo nem existe nos tipos dele, e o
+ * SDK descarta o `providerOptions.anthropic.*` antes de montar o corpo HTTP.
+ * Resultado medido em produção: `cache_read_tokens`/`cache_write_tokens` = 0
+ * em TODA chamada, sempre — não é a alavanca de custo que parecia ser.
+ *
+ * O conserto não é no SDK (não dá pra ensinar tipo alheio a reconhecer campo
+ * novo sem fork): é aqui, no fetch que já existe pra allowlist de egress.
+ * A OpenRouter documenta cache automático via UM campo `cache_control` na RAIZ
+ * do corpo da requisição (https://openrouter.ai/docs/features/prompt-caching)
+ * — ela mesma escolhe o último bloco cacheável, sem precisar remontar
+ * `messages`/`tools` pra colocar o campo em cada bloco à mão.
+ *
+ * Só entra na chamada 'openrouter': é sintaxe da OpenRouter, e OpenAI/Google/
+ * Anthropic direto não a reconhecem (na Anthropic direta, `stable-prefix.ts`
+ * já funciona pelo `providerOptions.anthropic` de verdade).
+ */
+function comCacheAutomaticoDaOpenRouter(fetchFn: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    if (init?.method === 'POST' && typeof init.body === 'string') {
+      try {
+        const corpo: unknown = JSON.parse(init.body);
+        if (corpo !== null && typeof corpo === 'object' && !('cache_control' in corpo)) {
+          init = {
+            ...init,
+            body: JSON.stringify({ ...corpo, cache_control: { type: 'ephemeral' } }),
+          };
+        }
+      } catch {
+        // Corpo não era JSON — não deveria acontecer neste caminho, mas
+        // seguir sem cache é sempre mais seguro que derrubar a chamada.
+      }
+    }
+    return fetchFn(input, init);
+  };
+}
+
 export function createDefaultRegistry(opts?: { allowedHosts?: string[] }): ProviderRegistry {
   const extra = opts?.allowedHosts ?? [];
   const contain = (endpoint: string): typeof fetch => {
@@ -109,7 +150,7 @@ export function createDefaultRegistry(opts?: { allowedHosts?: string[] }): Provi
         apiKey,
         baseURL: endpoint,
         headers: cabecalhosDeAtribuicaoOpenRouter(),
-        fetch: contain(endpoint),
+        fetch: comCacheAutomaticoDaOpenRouter(contain(endpoint)),
       })(modelId);
     },
   };
