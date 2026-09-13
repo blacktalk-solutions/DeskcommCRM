@@ -433,7 +433,15 @@ const marcarShape = {
   notes: z.string().max(2000).optional(),
   guest_email: z
     .string()
-    .email()
+    // NÃO `.email()`: o regex que o Zod gera por padrão usa negative lookahead
+    // (`(?!...)`), e o mecanismo de tool-calling da OpenAI (RE2, que não
+    // suporta lookahead) trava SILENCIOSAMENTE ao montar a chamada — o modelo
+    // fica preso tentando gerar algo que satisfaça um regex inválido pra ele,
+    // e a resposta volta vazia (finishReason 'length', 0 tokens, sem erro
+    // nenhum). Medido em 2026-09-13: bastava este campo, sozinho, pra quebrar
+    // TODA chamada da OpenAI nativa, mesmo sem o modelo tentar usar a tool.
+    // Este regex é equivalente na prática e não usa lookahead.
+    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
     .optional()
     .describe(
       "e-mail do cliente, se ele passou um. Quem entra com e-mail é convidado no evento do " +
@@ -493,7 +501,15 @@ const remarcarShape = {
   notes: z.string().max(2000).optional(),
   guest_email: z
     .string()
-    .email()
+    // NÃO `.email()`: o regex que o Zod gera por padrão usa negative lookahead
+    // (`(?!...)`), e o mecanismo de tool-calling da OpenAI (RE2, que não
+    // suporta lookahead) trava SILENCIOSAMENTE ao montar a chamada — o modelo
+    // fica preso tentando gerar algo que satisfaça um regex inválido pra ele,
+    // e a resposta volta vazia (finishReason 'length', 0 tokens, sem erro
+    // nenhum). Medido em 2026-09-13: bastava este campo, sozinho, pra quebrar
+    // TODA chamada da OpenAI nativa, mesmo sem o modelo tentar usar a tool.
+    // Este regex é equivalente na prática e não usa lookahead.
+    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
     .optional()
     .describe(
       "e-mail do cliente, se ele passou um NESTA conversa (ex: ele ainda não tinha convite e " +
