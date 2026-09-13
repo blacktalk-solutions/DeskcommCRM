@@ -8132,7 +8132,10 @@ export const DICIONARIO: Traducoes = {
   "A autorização de atendimento automático expirou. O responsável pode autorizar somente este link pelo botão de envio.": { es: "La autorización de atención automática venció. El responsable puede autorizar solo este enlace con el botón de envío." },
   "O envio atingiu uma janela ou limite do canal. Aguarde a liberação antes de tentar novamente.": { es: "El envío alcanzó una ventana o un límite del canal. Espera a que se habilite antes de intentarlo de nuevo." },
   "Uma regra de envio impediu a mensagem. Confira o aviso na Central antes de tentar novamente.": { es: "Una regla de envío bloqueó el mensaje. Revisa el aviso en la Central antes de intentarlo de nuevo." },
-  "Sua reunião está marcada para": { es: "Tu reunión está programada para" },
+  "Sua reunião está confirmada!": { es: "¡Tu reunión está confirmada!" },
+  "Nome:": { es: "Nombre:" },
+  "Data e hora:": { es: "Fecha y hora:" },
+  "Assunto:": { es: "Asunto:" },
   "Link do Google Meet:": { es: "Enlace de Google Meet:" },
 
 
@@ -8150,6 +8153,35 @@ export const DICIONARIO: Traducoes = {
   // ─── lib/ai/pontos/resolver.ts (avisos do painel de Provedores de IA) ───
   "Este ponto usa o modelo definido na versão publicada do agente; a escolha do painel não se aplica.": {
     es: "Este punto usa el modelo definido en la versión publicada del agente; la elección del panel no se aplica.",
+  },
+
+  // ─── app/app/ai/agents/[id]/_components (tela de edição do agente) ───
+  "A espera máxima não pode ser menor que a mínima.": {
+    es: "La espera máxima no puede ser menor que la mínima.",
+  },
+  "Antes de mandar a primeira mensagem, o agente espera um pouco e mostra \"digitando…\" — assim não parece um robô respondendo na hora. Deixe em branco para usar o padrão do sistema.": {
+    es: "Antes de enviar el primer mensaje, el agente espera un poco y muestra \"escribiendo…\" — así no parece un robot respondiendo al instante. Déjalo en blanco para usar el valor por defecto del sistema.",
+  },
+  "Espera mínima (ms)": { es: "Espera mínima (ms)" },
+  "Espera máxima (ms)": { es: "Espera máxima (ms)" },
+  "Espera fixa antes de começar a digitar (ms)": {
+    es: "Espera fija antes de empezar a escribir (ms)",
+  },
+  "Milissegundos por caractere da resposta": { es: "Milisegundos por carácter de la respuesta" },
+  "Buscar por nome ou fabricante…": { es: "Buscar por nombre o fabricante…" },
+  "Buscar modelo": { es: "Buscar modelo" },
+  "Nenhum modelo encontrado para essa busca": { es: "Ningún modelo encontrado para esa búsqueda" },
+  "Agenda incompleta": { es: "Agenda incompleta" },
+  "Você ligou uma ferramenta de marcar/remarcar/confirmar horário sem \"Ver o que a empresa atende\" (crm_list_event_types). Sem ela, o agente não sabe os tipos de atendimento que existem e vai errar toda tentativa de agendar — chuta um nome, o sistema recusa, e o cliente fica esperando. Ligue também essa capacidade.": {
+    es: "Activaste una herramienta de marcar/reprogramar/confirmar horario sin \"Ver lo que la empresa atiende\" (crm_list_event_types). Sin ella, el agente no sabe qué tipos de atención existen y va a fallar en todos los intentos de agendar — inventa un nombre, el sistema lo rechaza, y el cliente se queda esperando. Activa también esa capacidad.",
+  },
+  "Recomendado também ligar \"Ver horários livres na agenda\" (crm_find_free_slots) — sem ela o agente marca sem checar a disponibilidade de verdade.": {
+    es: "También se recomienda activar \"Ver horarios libres en la agenda\" (crm_find_free_slots) — sin ella el agente agenda sin comprobar la disponibilidad real.",
+  },
+
+  // ─── components/inbox/composer/ReplyReviewPanel.tsx ───
+  "Peça uma sugestão de resposta escrita pela IA, revise ou edite o texto, e só então aprove o envio ao cliente.": {
+    es: "Pide una sugerencia de respuesta escrita por la IA, revisa o edita el texto, y solo entonces aprueba el envío al cliente.",
   },
 };
 

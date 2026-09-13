@@ -88,6 +88,22 @@ export function createMeetDeliveryHandler(deps: {
           await settle("blocked:channel");
           return;
         }
+        const idioma = normalizarIdioma(row.contact_locale ?? row.organization_locale);
+        // Independente do WhatsApp (gates de guardrail podem vetar/adiar a
+        // mensagem ao cliente): o convite do Google já pode ganhar o link. Um
+        // simples UPDATE de `description` já dispara `fn_google_projection_stamp`
+        // (compara old/new e sobe `google_local_revision`), que é o mesmo gatilho
+        // que qualquer edição manual usa — nenhum campo de sincronismo é mexido
+        // aqui, só o texto público do compromisso.
+        await pool.query(
+          `update calendar_appointments set description = $3
+           where organization_id = $1 and id = $2 and description is distinct from $3`,
+          [
+            job.organization_id,
+            job.payload.appointment_id,
+            descricaoDoConvite(row.contact_name, row.title, row.starts_at, row.time_zone, url, idioma),
+          ],
+        );
         const channel =
           deps.channel?.(pool) ??
           createRuntimeSendChannel(pool, {
@@ -103,14 +119,7 @@ export function createMeetDeliveryHandler(deps: {
           meetingDelivery: context,
           channelSessionId: row.channel_session_id,
           crmDailyLimit: row.daily_message_limit,
-          body: meetingDeliveryBody(
-            row.starts_at,
-            row.time_zone,
-            url,
-            normalizarIdioma(row.contact_locale ?? row.organization_locale),
-            row.contact_name,
-            row.title,
-          ),
+          body: meetingDeliveryBody(row.starts_at, row.time_zone, url, idioma, row.contact_name, row.title),
           optedOutThisTurn: false,
           now: new Date(),
           lgpd: deriveLgpdFromContact(row, false),
@@ -176,7 +185,7 @@ export function meetingDeliveryBody(
   idioma: Idioma,
   /** Nome do contato, se houver — vira a saudação. `undefined`/`null` = sem nome (compat). */
   contactName?: string | null,
-  /** Título do compromisso, se houver — vira a descrição breve entre parênteses. */
+  /** Título do compromisso, se houver — vira a linha "Assunto". */
   title?: string | null,
 ): string {
   const when = new Intl.DateTimeFormat(tagDeIdioma(idioma), {
@@ -185,6 +194,42 @@ export function meetingDeliveryBody(
     timeZone,
   }).format(new Date(startsAt));
   const saudacao = contactName ? `${traduzir("Oi,", idioma)} ${contactName}! ` : "";
-  const assunto = title ? ` — ${title}` : "";
-  return `${saudacao}${traduzir("Sua reunião está marcada para", idioma)} ${when} (${timeZone})${assunto}. ${traduzir("Link do Google Meet:", idioma)} ${url}`;
+  const linhas = [
+    `*${traduzir("Data e hora:", idioma)}* ${when} (${timeZone})`,
+    ...(title ? [`*${traduzir("Assunto:", idioma)}* ${title}`] : []),
+    `*${traduzir("Link do Google Meet:", idioma)}* ${url}`,
+  ];
+  return `${saudacao}${traduzir("Sua reunião está confirmada!", idioma)}\n\n${linhas.join("\n")}`;
+}
+
+/** Escapa o mínimo pro HTML que a descrição do Google aceita não quebrar com `<`/`&` no nome ou título. */
+function escapeHtml(texto: string): string {
+  return texto.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Corpo HTML da descrição do EVENTO do Google (não da mensagem de WhatsApp) —
+ * mesmos 4 dados, rótulo em negrito, mas com `<b>`/`<br>` em vez de `*`/`\n`:
+ * é o que a UI do Google Calendar (e o corpo do e-mail de convite) renderiza.
+ */
+export function descricaoDoConvite(
+  contactName: string | null,
+  title: string,
+  startsAt: string,
+  timeZone: string,
+  url: string,
+  idioma: Idioma,
+): string {
+  const when = new Intl.DateTimeFormat(tagDeIdioma(idioma), {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone,
+  }).format(new Date(startsAt));
+  const linhas = [
+    ...(contactName ? [`<b>${traduzir("Nome:", idioma)}</b> ${escapeHtml(contactName)}`] : []),
+    `<b>${traduzir("Data e hora:", idioma)}</b> ${when} (${timeZone})`,
+    `<b>${traduzir("Assunto:", idioma)}</b> ${escapeHtml(title)}`,
+    `<b>${traduzir("Link do Google Meet:", idioma)}</b> ${url}`,
+  ];
+  return linhas.join("<br>\n");
 }

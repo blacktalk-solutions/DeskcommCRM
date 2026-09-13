@@ -109,10 +109,10 @@ it("mensagem determinística usa texto e data do destinatário", async () => {
   const at = "2030-01-02T13:05:00Z",
     url = "https://meet.google.com/abc-defg-hij";
   expect(meetingDeliveryBody(at, "UTC", url, "es")).toBe(
-    `Tu reunión está programada para 2/1/30, 13:05 (UTC). Enlace de Google Meet: ${url}`,
+    `¡Tu reunión está confirmada!\n\n*Fecha y hora:* 2/1/30, 13:05 (UTC)\n*Enlace de Google Meet:* ${url}`,
   );
   expect(meetingDeliveryBody(at, "America/Sao_Paulo", url, "pt-BR")).toBe(
-    `Sua reunião está marcada para 02/01/2030, 10:05 (America/Sao_Paulo). Link do Google Meet: ${url}`,
+    `Sua reunião está confirmada!\n\n*Data e hora:* 02/01/2030, 10:05 (America/Sao_Paulo)\n*Link do Google Meet:* ${url}`,
   );
 });
 
@@ -123,11 +123,41 @@ it("mensagem com nome do contato e título do compromisso — issue agendamento 
   expect(
     meetingDeliveryBody(at, "America/Sao_Paulo", url, "pt-BR", "Thie", "Diagnóstico gratuito"),
   ).toBe(
-    `Oi, Thie! Sua reunião está marcada para 02/01/2030, 10:05 (America/Sao_Paulo) — Diagnóstico gratuito. Link do Google Meet: ${url}`,
+    `Oi, Thie! Sua reunião está confirmada!\n\n*Data e hora:* 02/01/2030, 10:05 (America/Sao_Paulo)\n*Assunto:* Diagnóstico gratuito\n*Link do Google Meet:* ${url}`,
   );
   // nome/título ausentes (null) tem de se comportar igual a omitidos — mesmo
   // texto do teste "determinística" acima, sem nenhum pedaço extra sobrando.
   expect(meetingDeliveryBody(at, "America/Sao_Paulo", url, "pt-BR", null, null)).toBe(
-    `Sua reunião está marcada para 02/01/2030, 10:05 (America/Sao_Paulo). Link do Google Meet: ${url}`,
+    `Sua reunião está confirmada!\n\n*Data e hora:* 02/01/2030, 10:05 (America/Sao_Paulo)\n*Link do Google Meet:* ${url}`,
+  );
+});
+
+it("descrição do convite do Google — rótulos em negrito HTML, nome/assunto/link", async () => {
+  const { descricaoDoConvite } = await import("@/lib/agent-engine/agent/meet-delivery");
+  const at = "2030-01-02T13:05:00Z",
+    url = "https://meet.google.com/abc-defg-hij";
+  expect(
+    descricaoDoConvite("Thie", "Diagnóstico gratuito", at, "America/Sao_Paulo", url, "pt-BR"),
+  ).toBe(
+    "<b>Nome:</b> Thie<br>\n" +
+      "<b>Data e hora:</b> 02/01/2030, 10:05 (America/Sao_Paulo)<br>\n" +
+      "<b>Assunto:</b> Diagnóstico gratuito<br>\n" +
+      `<b>Link do Google Meet:</b> ${url}`,
+  );
+  // sem nome (contato sem cadastro) — a linha some, o resto segue igual.
+  expect(
+    descricaoDoConvite(null, "Diagnóstico gratuito", at, "America/Sao_Paulo", url, "pt-BR"),
+  ).toBe(
+    "<b>Data e hora:</b> 02/01/2030, 10:05 (America/Sao_Paulo)<br>\n" +
+      "<b>Assunto:</b> Diagnóstico gratuito<br>\n" +
+      `<b>Link do Google Meet:</b> ${url}`,
+  );
+  // nome/título com `<`, `>` ou `&` não quebram o HTML da descrição.
+  expect(
+    descricaoDoConvite("A & B <script>", "x < y", at, "America/Sao_Paulo", url, "pt-BR"),
+  ).toContain("<b>Nome:</b> A &amp; B &lt;script&gt;<br>");
+  // idioma segue o contato — mesmo guardrail que meetingDeliveryBody já respeita.
+  expect(descricaoDoConvite("Thie", "Diagnóstico", at, "UTC", url, "es")).toContain(
+    "<b>Nombre:</b> Thie<br>\n<b>Fecha y hora:</b> ",
   );
 });
