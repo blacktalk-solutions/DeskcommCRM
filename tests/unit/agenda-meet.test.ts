@@ -115,3 +115,19 @@ it("mensagem determinística usa texto e data do destinatário", async () => {
     `Sua reunião está marcada para 02/01/2030, 10:05 (America/Sao_Paulo). Link do Google Meet: ${url}`,
   );
 });
+
+it("mensagem com nome do contato e título do compromisso — issue agendamento formatado", async () => {
+  const { meetingDeliveryBody } = await import("@/lib/agent-engine/agent/meet-delivery");
+  const at = "2030-01-02T13:05:00Z",
+    url = "https://meet.google.com/abc-defg-hij";
+  expect(
+    meetingDeliveryBody(at, "America/Sao_Paulo", url, "pt-BR", "Thie", "Diagnóstico gratuito"),
+  ).toBe(
+    `Oi, Thie! Sua reunião está marcada para 02/01/2030, 10:05 (America/Sao_Paulo) — Diagnóstico gratuito. Link do Google Meet: ${url}`,
+  );
+  // nome/título ausentes (null) tem de se comportar igual a omitidos — mesmo
+  // texto do teste "determinística" acima, sem nenhum pedaço extra sobrando.
+  expect(meetingDeliveryBody(at, "America/Sao_Paulo", url, "pt-BR", null, null)).toBe(
+    `Sua reunião está marcada para 02/01/2030, 10:05 (America/Sao_Paulo). Link do Google Meet: ${url}`,
+  );
+});
