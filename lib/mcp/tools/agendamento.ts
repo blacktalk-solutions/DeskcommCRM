@@ -431,6 +431,15 @@ const marcarShape = {
   owner_user_id: z.string().uuid().optional(),
   title: z.string().min(1).max(200).optional(),
   notes: z.string().max(2000).optional(),
+  guest_email: z
+    .string()
+    .email()
+    .optional()
+    .describe(
+      "e-mail do cliente, se ele passou um. Quem entra com e-mail é convidado no evento do " +
+        "Google Calendar e o compromisso aparece na agenda DELE também, não só na sua. Omitido = " +
+        "sem convite, o cliente só fica sabendo pela mensagem aqui na conversa.",
+    ),
 };
 
 export const crmBookAppointment: McpToolDefinition<typeof marcarShape> = {
@@ -439,6 +448,9 @@ export const crmBookAppointment: McpToolDefinition<typeof marcarShape> = {
     "Marca um compromisso com HORA COMBINADA entre o cliente e um atendente — consulta, sessão, " +
     "visita, reunião. Use quando o cliente ESCOLHEU um horário e vai comparecer: isto reserva o " +
     "tempo de uma pessoa da equipe, e o cliente conta com ele. No atendimento atual, marcar Google Meet também agenda a entrega do link nesta conversa quando ficar pronto. " +
+    "Antes de marcar, pergunte o e-mail do cliente (\"pra eu já te enviar o convite\") e passe em " +
+    "`guest_email` — sem isso o compromisso fica só na SUA agenda, não na dele. Se a pessoa não " +
+    "quiser passar e-mail, marque assim mesmo sem insistir. " +
     "NÃO use para 'voltar a falar com o cliente depois' — isso é retorno, e a ferramenta é " +
     "`crm_schedule_followup`. A diferença: aqui as DUAS partes combinaram e alguém vai esperar; " +
     "lá é decisão interna nossa e o cliente não sabe de nada. " +
@@ -468,6 +480,7 @@ export const crmBookAppointment: McpToolDefinition<typeof marcarShape> = {
           ...(input.owner_user_id ? { owner_user_id: input.owner_user_id } : {}),
           ...(input.title ? { title: input.title } : {}),
           ...(input.notes ? { notes: input.notes } : {}),
+          ...(input.guest_email ? { guest_email: input.guest_email } : {}),
         },
       );
       return { marcado: true, compromisso: r, ...(r.meeting_state === "pending" ? { mensagem: "O compromisso foi marcado; o link ainda está sendo criado. Não invente um link nem afirme que ele já foi enviado." } : {}) };

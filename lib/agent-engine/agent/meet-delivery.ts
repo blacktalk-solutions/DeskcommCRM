@@ -65,9 +65,11 @@ export function createMeetDeliveryHandler(deps: {
             archived_at: string | null;
             contact_locale: string | null;
             organization_locale: string;
+            contact_name: string | null;
+            title: string;
           }
         >(
-          `select a.meeting_url,a.starts_at,a.time_zone,c.source,c.consent,c.is_anonymized,c.locale as contact_locale,o.locale as organization_locale,v.channel_session_id,s.daily_message_limit,to_jsonb(s)->>'archived_at' as archived_at
+          `select a.meeting_url,a.starts_at,a.time_zone,a.title,c.source,c.consent,c.is_anonymized,c.locale as contact_locale,coalesce(c.display_name,c.name) as contact_name,o.locale as organization_locale,v.channel_session_id,s.daily_message_limit,to_jsonb(s)->>'archived_at' as archived_at
            from calendar_appointments a join contacts c on c.organization_id=a.organization_id and c.id=a.contact_id
            join organizations o on o.id=a.organization_id
            join conversations v on v.organization_id=a.organization_id and v.contact_id=c.id and v.id=$3
@@ -106,6 +108,8 @@ export function createMeetDeliveryHandler(deps: {
             row.time_zone,
             url,
             normalizarIdioma(row.contact_locale ?? row.organization_locale),
+            row.contact_name,
+            row.title,
           ),
           optedOutThisTurn: false,
           now: new Date(),
@@ -170,11 +174,17 @@ export function meetingDeliveryBody(
   timeZone: string,
   url: string,
   idioma: Idioma,
+  /** Nome do contato, se houver — vira a saudação. `undefined`/`null` = sem nome (compat). */
+  contactName?: string | null,
+  /** Título do compromisso, se houver — vira a descrição breve entre parênteses. */
+  title?: string | null,
 ): string {
   const when = new Intl.DateTimeFormat(tagDeIdioma(idioma), {
     dateStyle: "short",
     timeStyle: "short",
     timeZone,
   }).format(new Date(startsAt));
-  return `${traduzir("Sua reunião está marcada para", idioma)} ${when} (${timeZone}). ${traduzir("Link do Google Meet:", idioma)} ${url}`;
+  const saudacao = contactName ? `${traduzir("Oi,", idioma)} ${contactName}! ` : "";
+  const assunto = title ? ` — ${title}` : "";
+  return `${saudacao}${traduzir("Sua reunião está marcada para", idioma)} ${when} (${timeZone})${assunto}. ${traduzir("Link do Google Meet:", idioma)} ${url}`;
 }
