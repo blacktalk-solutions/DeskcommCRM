@@ -491,6 +491,15 @@ const remarcarShape = {
   appointment_id: z.string().uuid(),
   new_starts_at: z.string().datetime({ offset: true }).describe("o novo início, vindo de `crm_find_free_slots`"),
   notes: z.string().max(2000).optional(),
+  guest_email: z
+    .string()
+    .email()
+    .optional()
+    .describe(
+      "e-mail do cliente, se ele passou um NESTA conversa (ex: ele ainda não tinha convite e " +
+        "pediu, ou corrigiu o e-mail). Quem entra aqui é convidado/atualizado no evento do Google " +
+        "Calendar. Omitido = não mexe no convite que já existe (ou na ausência dele).",
+    ),
 };
 
 export const crmRescheduleAppointment: McpToolDefinition<typeof remarcarShape> = {
@@ -502,6 +511,9 @@ export const crmRescheduleAppointment: McpToolDefinition<typeof remarcarShape> =
     "continua um só e o lembrete é refeito sozinho. Se você cancelar e marcar, o cliente recebe " +
     "dois avisos contraditórios e a linha do tempo dele passa a contar que ele desistiu e voltou — " +
     "o que não aconteceu. " +
+    "Se o compromisso ainda não tem e-mail do cliente (confira em `crm_list_appointments`) e ele " +
+    "passar um agora, inclua em `guest_email` — é a única chance de convidá-lo se isso não foi " +
+    "feito na marcação original. " +
     "Confirme o horário novo com `crm_find_free_slots` antes: horário indisponível é recusado.",
   inputSchema: remarcarShape,
   category: "write",
@@ -516,6 +528,7 @@ export const crmRescheduleAppointment: McpToolDefinition<typeof remarcarShape> =
           id: input.appointment_id,
           starts_at: input.new_starts_at,
           ...(input.notes ? { notes: input.notes } : {}),
+          ...(input.guest_email ? { guest_email: input.guest_email } : {}),
         },
       );
       return { remarcado: true, compromisso: r };
