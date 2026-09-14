@@ -169,7 +169,16 @@ const horariosLivresShape = {
     .regex(/^\d{4}-\d{2}-\d{2}$/, "dia deve estar em YYYY-MM-DD")
     .optional()
     .describe("dia civil pedido pelo cliente, em YYYY-MM-DD. Use para uma data específica; o servidor aplica o fuso da agenda."),
-  owner_user_id: z.string().uuid().optional(),
+  // SEM owner_user_id de propósito: quem atende é decisão do TIPO de
+  // atendimento (default_owner_user_id), não do modelo. Campo opcional sem
+  // `.describe()` + modelo mais barato (gpt-4o-mini) é a combinação que
+  // produz um uuid "de aterro" (00000000-...) repetido em loop — o modelo
+  // tenta preencher todo campo que vê, o servidor descarta certinho, mas ele
+  // insiste com o mesmo valor e nunca converge pra uma resposta. Medido em
+  // produção (2026-09-13): 10 tentativas seguidas de crm_find_free_slots,
+  // zero mensagem entregue ao cliente. Tirar o campo da superfície da IA
+  // resolve na raiz, pra qualquer modelo — o Sonnet nunca caía nisso, mas
+  // "o modelo caro não erra" não é solução, é sorte.
   limite: z
     .number()
     .int()
@@ -227,7 +236,7 @@ export const crmFindFreeSlots: McpToolDefinition<typeof horariosLivresShape> = {
 
     const consulta = await horariosLivresDaOrg(ctx.supabase, ctx.organizationId, {
       eventTypeSlug: input.event_type_slug,
-      ownerUserId: input.owner_user_id ?? null,
+      ownerUserId: null, // decisão do tipo de atendimento, não da IA — ver comentário no shape.
       de,
       ate,
       agora,
@@ -311,7 +320,10 @@ const listarShape = {
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional()
     .describe("um dia específico, no formato AAAA-MM-DD"),
-  owner_user_id: z.string().uuid().optional(),
+  // SEM owner_user_id — mesma razão do horariosLivresShape acima: quem
+  // atende não é escolha do modelo, e o campo opcional sem instrução vira
+  // convite pra um uuid inventado. contact_id/lead_id/dia seguem valendo
+  // como recorte.
   /**
    * ⚠️ A constante, NUNCA os literais. `SITUACOES_DO_AGENDAMENTO` é a fonte
    * (`lib/agenda/tipos.ts`), e o invariante `vocabulario-banco-x-typescript` existe
@@ -326,9 +338,8 @@ export const crmListAppointments: McpToolDefinition<typeof listarShape> = {
   name: "crm_list_appointments",
   description:
     "Lista os compromissos com HORA MARCADA de um cliente, ou de um dia da equipe, com a " +
-    "situação de cada um. Informe pelo menos um recorte: contact_id, lead_id, dia ou " +
-    "owner_user_id — sem recorte a chamada é recusada, porque varrer a agenda inteira não " +
-    "responde pergunta nenhuma. " +
+    "situação de cada um. Informe pelo menos um recorte: contact_id, lead_id ou dia — sem " +
+    "recorte a chamada é recusada, porque varrer a agenda inteira não responde pergunta nenhuma. " +
     "NÃO CONFUNDA COM `crm_list_followups`, que lista os RETORNOS — as vezes em que nós " +
     "decidimos voltar a falar, sem nada combinado com o cliente. Aqui é o que foi combinado " +
     "COM ele e ocupa o tempo de um atendente. O mesmo cliente pode ter os dois. " +
@@ -343,7 +354,7 @@ export const crmListAppointments: McpToolDefinition<typeof listarShape> = {
       contactId: input.contact_id ?? null,
       leadId: input.lead_id ?? null,
       dia: input.dia ?? null,
-      ownerUserId: input.owner_user_id ?? null,
+      ownerUserId: null, // decisão do tipo de atendimento, não da IA — ver comentário no shape.
       situacao: input.situacao ?? null,
       limite: input.limite ?? 20,
     });
@@ -428,7 +439,7 @@ const marcarShape = {
   event_type_slug: z.string().min(1).describe("o identificador legível do tipo de atendimento"),
   starts_at: z.string().datetime({ offset: true }).describe("o instante exato do início, vindo de `crm_find_free_slots`"),
   contact_id: z.string().uuid().describe("quem vai ser atendido"),
-  owner_user_id: z.string().uuid().optional(),
+  // SEM owner_user_id — mesma razão do horariosLivresShape acima.
   title: z.string().min(1).max(200).optional(),
   notes: z.string().max(2000).optional(),
   guest_email: z
@@ -485,7 +496,6 @@ export const crmBookAppointment: McpToolDefinition<typeof marcarShape> = {
           event_type_id: tipo.id,
           starts_at: input.starts_at,
           contact_id: input.contact_id,
-          ...(input.owner_user_id ? { owner_user_id: input.owner_user_id } : {}),
           ...(input.title ? { title: input.title } : {}),
           ...(input.notes ? { notes: input.notes } : {}),
           ...(input.guest_email ? { guest_email: input.guest_email } : {}),
