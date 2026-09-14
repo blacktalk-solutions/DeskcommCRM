@@ -128,6 +128,19 @@ export interface RunModelCallInput {
    */
   maxSteps?: number;
   /**
+   * Força (ou desliga) chamada de tool no passo seguinte -- 'required' garante
+   * que o modelo chame ALGUMA tool do conjunto passado em tools, em vez de
+   * poder parar so com texto (ou, pior, sem nada). Usado pelo fail-safe de
+   * turno silencioso (inbound-turn.ts): quando o turno principal termina com
+   * ZERO mensagens enviadas -- o modelo tinha send_message disponivel e nao
+   * chamou -- uma 2a chamada com tools = {send_message} e toolChoice =
+   * 'required' FORCA o envio, em vez de confiar de novo so em instrucao de
+   * prompt (que e exatamente o que falhou da 1a vez). undefined preserva o
+   * default do SDK (auto) -- todo call site que nao passa isto continua
+   * igual.
+   */
+  toolChoice?: 'auto' | 'none' | 'required';
+  /**
    * Override de provider/credencial vindo da versão PUBLICADA do agente (Fase
    * 2B) — resolvido no seam, nunca no call site. Sem ele, config da org.
    */
@@ -425,6 +438,7 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
       messages: input.messages,
       tools: guardServiceTools(prefix.tools),
       stopWhen: input.maxSteps === undefined ? undefined : stepCountIs(input.maxSteps),
+      ...(input.toolChoice === undefined ? {} : { toolChoice: input.toolChoice }),
       temperature,
       topP,
       topK,
