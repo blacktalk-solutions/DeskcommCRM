@@ -455,9 +455,12 @@ const marcarShape = {
     .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
     .optional()
     .describe(
-      "e-mail do cliente, se ele passou um. Quem entra com e-mail é convidado no evento do " +
-        "Google Calendar e o compromisso aparece na agenda DELE também, não só na sua. Omitido = " +
-        "sem convite, o cliente só fica sabendo pela mensagem aqui na conversa.",
+      "e-mail do cliente, SE E SÓ SE ele escreveu um e-mail de verdade nesta conversa. " +
+        "NUNCA invente, adivinhe ou monte um e-mail parecido — um e-mail falso aqui gera um " +
+        "convite que não chega a lugar nenhum, e ninguém percebe o erro. Cliente não deu " +
+        "e-mail nenhum? Omita o campo inteiro; não é obrigatório e o compromisso continua " +
+        "sendo marcado normalmente. Quem entra com e-mail real é convidado no evento do " +
+        "Google Calendar e o compromisso aparece na agenda DELE também, não só na sua.",
     ),
 };
 
@@ -522,9 +525,11 @@ const remarcarShape = {
     .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
     .optional()
     .describe(
-      "e-mail do cliente, se ele passou um NESTA conversa (ex: ele ainda não tinha convite e " +
-        "pediu, ou corrigiu o e-mail). Quem entra aqui é convidado/atualizado no evento do Google " +
-        "Calendar. Omitido = não mexe no convite que já existe (ou na ausência dele).",
+      "e-mail do cliente, SE E SÓ SE ele escreveu um e-mail de verdade nesta conversa (ex: " +
+        "ainda não tinha convite e pediu, ou corrigiu o e-mail). NUNCA invente, adivinhe ou " +
+        "monte um e-mail parecido. Sem e-mail novo? Omita o campo — não mexe no convite que já " +
+        "existe (ou na ausência dele). Quem entra aqui é convidado/atualizado no evento do " +
+        "Google Calendar.",
     ),
 };
 
