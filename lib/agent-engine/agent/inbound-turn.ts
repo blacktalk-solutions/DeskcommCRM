@@ -3324,20 +3324,54 @@ async function executarTurnoDoAgente(
           mcpCleanup = mcp.cleanup;
           for (const [name, mcpTool] of Object.entries(mcp.tools)) {
             if (name in rawTools) continue;
-            // Marca a EXECUÇÃO (não só a decisão de chamar) — é isso que o agendaStallGate
-            // precisa saber para não vetar um turno que já checou a agenda de verdade.
-            if (AGENDA_TOOL_NAMES.has(name) && typeof mcpTool.execute === 'function') {
-              const executeOriginal = mcpTool.execute.bind(mcpTool);
-              rawTools[name] = {
-                ...mcpTool,
-                execute: (async (...args: Parameters<typeof executeOriginal>) => {
-                  agendaToolCalledThisTurn = true;
-                  return executeOriginal(...args);
-                }) as typeof mcpTool.execute,
-              };
-            } else {
-              rawTools[name] = mcpTool;
-            }
+            // Instrumentação nova (2026-09-14): cada chamada de tool MCP loga
+            // nome, argumentos (só as CHAVES — o valor pode ter PII do lead) e o
+            // desfecho (ok/erro) antes de qualquer outra coisa acontecer. Medido
+            // esta noite: um turno de agendamento gastou os 10 passos sem nunca
+            // completar `crm_book_appointment`, e não havia como saber POR QUE —
+            // se o modelo nunca chamou a tool certa, se chamou e ela devolveu
+            // erro, ou se chamou repetido a mesma coisa. Sem isto, o próximo
+            // turno travado nesse mesmo jeito seria outra caça às cegas.
+            const executeOriginal = typeof mcpTool.execute === 'function' ? mcpTool.execute.bind(mcpTool) : undefined;
+            rawTools[name] = {
+              ...mcpTool,
+              ...(executeOriginal === undefined
+                ? {}
+                : {
+                    execute: (async (...args: Parameters<typeof executeOriginal>) => {
+                      if (AGENDA_TOOL_NAMES.has(name)) {
+                        // Marca a EXECUÇÃO (não só a decisão de chamar) — é isso que o
+                        // agendaStallGate precisa saber para não vetar um turno que já
+                        // checou a agenda de verdade.
+                        agendaToolCalledThisTurn = true;
+                      }
+                      const inicio = Date.now();
+                      const inputArg = args[0] as Record<string, unknown> | undefined;
+                      try {
+                        const resultado = await executeOriginal(...args);
+                        const r = resultado as { ok?: boolean; error?: { code?: string } } | undefined;
+                        runLog.info('mcp tool chamada', {
+                          job_id: liveJob().id,
+                          tool: name,
+                          args_keys: inputArg ? Object.keys(inputArg) : [],
+                          ok: r?.ok,
+                          error_code: r?.error?.code,
+                          latency_ms: Date.now() - inicio,
+                        });
+                        return resultado;
+                      } catch (err) {
+                        runLog.warn('mcp tool chamada — lançou exceção', {
+                          job_id: liveJob().id,
+                          tool: name,
+                          args_keys: inputArg ? Object.keys(inputArg) : [],
+                          error: err instanceof Error ? err.message : String(err),
+                          latency_ms: Date.now() - inicio,
+                        });
+                        throw err;
+                      }
+                    }) as typeof mcpTool.execute,
+                  }),
+            };
           }
           mcpToolIdsDoTurno.push(...mcp.toolIds);
           runLog.info('tools MCP da tela montadas no turno', { mcp_tool_ids: mcp.toolIds });
