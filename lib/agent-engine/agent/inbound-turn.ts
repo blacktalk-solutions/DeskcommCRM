@@ -3988,23 +3988,56 @@ async function executarTurnoDoAgente(
     // não é suficiente -- medido em produção DE NOVO, 2026-09-14, gpt-4o-mini,
     // turno de 41s / 1020 tokens de saída processando um agendamento real,
     // outcomes vazio no fim (mesma assinatura de messages_sent:0 /
-    // declaracao_vazia que o reforço de prompt deveria ter fechado). Em vez de
-    // confiar de novo só em instrução, uma 2ª chamada com toolChoice 'required'
-    // e SÓ send_message no conjunto de tools torna o envio a ÚNICA saída
-    // possível para o modelo -- deixa de ser uma sugestão que ele pode ignorar.
+    // declaracao_vazia que o reforço de prompt deveria ter fechado).
+    //
+    // DUAS etapas, não uma -- a 1ª versão (uma chamada só, tools={send_message},
+    // toolChoice 'required', maxSteps:2) tinha DOIS defeitos medidos no mesmo
+    // teste em produção:
+    //  (a) restringir o conjunto a só send_message impede o modelo de terminar
+    //      a ação pendente (ex.: crm_book_appointment) -- ele é forçado a FALAR
+    //      antes de ter agido, e o texto que sai soa como confirmação sem
+    //      nenhum agendamento real ter sido criado (medido: mensagem "Vamos
+    //      confirmar... quinta-feira às 16h" enviada, `calendar_appointments`
+    //      continuou vazio).
+    //  (b) toolChoice 'required' vale em CADA passo do loop, não só no
+    //      primeiro -- com maxSteps:2 e só uma tool disponível, o modelo é
+    //      forçado a chamar send_message de novo no 2º passo mesmo já tendo
+    //      chamado no 1º, porque 'obrigatório chamar alguma tool' não tem outra
+    //      tool pra chamar. Resultado medido: send_message chamado 2x, cliente
+    //      recebeu a MESMA mensagem duplicada (4 bolhas, 2 pares idênticos).
+    //
+    // Etapa 1 usa o conjunto de tools INTEIRO (pode terminar a ação de verdade)
+    // com maxSteps:1 (exige exatamente UM passo, nunca repete). Etapa 2 só roda
+    // se ainda não saiu nada pro cliente depois da etapa 1, e aí sim restringe a
+    // send_message -- também com maxSteps:1, pelo mesmo motivo do item (b): um
+    // passo forçado nunca duplica, dois passos forçados com uma tool só sempre
+    // duplicam.
     //
     // Fica DEPOIS dos dois throws de propósito: são exatamente os dois motivos
     // LEGÍTIMOS pra outcomes vir vazio, e reagir a eles com um envio forçado
     // seria errado (cap de envio: forçaria o mesmo veto de novo; blocked: o job
     // já foi cancelado, não há turno pra continuar). Chegar aqui com outcomes
-    // vazio só sobra o caso genuíno: o modelo esqueceu.
+    // vazio só sobra o caso genuíno: o modelo não terminou o turno.
     const sendMessageToolForFailSafe = tools.send_message;
     if (!preview && outcomes.length === 0 && sendMessageToolForFailSafe !== undefined) {
-      runLog.warn('turno terminou sem enviar nada — acionando fail-safe (toolChoice required)', {
-        finish_reason: turn.result.finishReason,
-      });
+      runLog.warn(
+        'turno terminou sem enviar nada — acionando fail-safe em 2 etapas (completar ação, depois garantir envio)',
+        { finish_reason: turn.result.finishReason },
+      );
+
+      const recoveryModelArgs = agentConfig !== null
+        ? {
+            model: agentConfig.model,
+            llmOverride: {
+              provider: agentConfig.provider,
+              credentialId: agentConfig.credentialId,
+            },
+          }
+        : {};
+      let recoveryMessages: typeof openingTextOnly = [...openingTextOnly, ...turn.result.response.messages];
+
       try {
-        await runModelCall(
+        const etapa1 = await runModelCall(
           pool,
           deps.llmCfg,
           {
@@ -4015,37 +4048,65 @@ async function executarTurnoDoAgente(
             purpose: 'agent_turn',
             system,
             messages: [
-              ...openingTextOnly,
-              ...turn.result.response.messages,
+              ...recoveryMessages,
               {
                 role: 'user',
                 content:
-                  'Você concluiu as ações acima mas ainda NÃO enviou nenhuma mensagem pro ' +
-                  'cliente. Chame send_message AGORA com a resposta final, usando o que você ' +
-                  'já viu/fez — não chame nenhuma outra ferramenta.',
+                  'Você não terminou o turno. Se ainda falta CONFIRMAR o agendamento de ' +
+                  'verdade (chamar a ferramenta de agenda — não só dizer pro cliente que vai ' +
+                  'confirmar), chame essa ferramenta AGORA. Se a ação já está completa e só ' +
+                  'falta avisar o cliente, chame send_message.',
               },
             ],
-            tools: { send_message: sendMessageToolForFailSafe },
+            tools,
             toolChoice: 'required',
-            maxSteps: 2,
-            ...(agentConfig !== null
-              ? {
-                  model: agentConfig.model,
-                  llmOverride: {
-                    provider: agentConfig.provider,
-                    credentialId: agentConfig.credentialId,
-                  },
-                }
-              : {}),
+            maxSteps: 1,
+            ...recoveryModelArgs,
           },
           { registry: deps.registry, log: runLog },
         );
+        recoveryMessages = [...recoveryMessages, ...etapa1.result.response.messages];
       } catch (err) {
-        runLog.warn(
-          'fail-safe de turno silencioso falhou na chamada forçada (segue pro checkpoint mesmo assim)',
-          { error: err instanceof Error ? err.message : String(err) },
-        );
+        runLog.warn('fail-safe etapa 1 (completar ação pendente) falhou', {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
+
+      if (outcomes.length === 0) {
+        try {
+          await runModelCall(
+            pool,
+            deps.llmCfg,
+            {
+              tenantId,
+              leadId: leadId || null,
+              jobId: job?.id,
+              agentId: agentConfig?.agentId ?? null,
+              purpose: 'agent_turn',
+              system,
+              messages: [
+                ...recoveryMessages,
+                {
+                  role: 'user',
+                  content:
+                    'Chame send_message AGORA com a resposta final pro cliente, usando o que ' +
+                    'você já viu/fez — não chame nenhuma outra ferramenta.',
+                },
+              ],
+              tools: { send_message: sendMessageToolForFailSafe },
+              toolChoice: 'required',
+              maxSteps: 1,
+              ...recoveryModelArgs,
+            },
+            { registry: deps.registry, log: runLog },
+          );
+        } catch (err) {
+          runLog.warn('fail-safe etapa 2 (garantir envio) falhou', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
       if (outcomes.length === 0) {
         // Nem forçado o modelo enviou — send_message deve ter sido vetado por algo
         // que não é cap de envio (LGPD stop, janela fechada, etc. — o cap em si já
@@ -4059,9 +4120,9 @@ async function executarTurnoDoAgente(
             severity: 'critical',
             title: 'Cliente sem resposta — turno terminou sem enviar nada, nem forçado',
             body:
-              'A IA processou o turno (inclusive com o fail-safe de envio forçado) e ' +
-              'mesmo assim nenhuma mensagem saiu para o cliente. Verifique a conversa e ' +
-              'responda manualmente.',
+              'A IA processou o turno (inclusive com o fail-safe de envio forçado em 2 ' +
+              'etapas) e mesmo assim nenhuma mensagem saiu para o cliente. Verifique a ' +
+              'conversa e responda manualmente.',
             refKind: 'conversation',
             refId: input.conversationId,
           },
@@ -4073,7 +4134,6 @@ async function executarTurnoDoAgente(
         });
       }
     }
-
     runLog.info('turno do agente concluído', {
       kind: liveJob().kind,
       messages_sent: outcomes.filter(
