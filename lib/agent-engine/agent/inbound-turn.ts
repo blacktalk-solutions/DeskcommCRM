@@ -796,7 +796,12 @@ const AGENDA_SYSTEM_BLOCK =
   'Fernando"). Isso vale para OUTRAS decisões (desconto, exceção de política, algo que a ferramenta não ' +
   'cobre) — nunca para simplesmente consultar ou marcar um horário que a ferramenta resolve sozinha. NÃO ' +
   'diga "vou confirmar/verificar com [nome de pessoa/equipe]" para justificar não ter chamado a ferramenta: ' +
-  'chame primeiro, e só fale de encaminhar a alguém se a ferramenta genuinamente não resolver.';
+  'chame primeiro, e só fale de encaminhar a alguém se a ferramenta genuinamente não resolver.\n' +
+  'NUNCA termine seu turno só com uma chamada de ferramenta, sem nenhuma mensagem de texto pro cliente. ' +
+  'Depois de ver o retorno de crm_find_free_slots, crm_book_appointment ou qualquer outra ferramenta, ' +
+  'sua PRÓXIMA ação é sempre escrever a resposta pro cliente usando esse resultado — nunca pare no meio, ' +
+  'achando que "já chamei a ferramenta" é suficiente. Chamar e não responder deixa o cliente sem nenhuma ' +
+  'mensagem, o que é pior do que uma resposta imperfeita.';
 
 /**
  * Tools de agenda cuja EXECUÇÃO neste turno arma o `agendaStallGate` (before-send.ts) —
