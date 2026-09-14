@@ -106,6 +106,7 @@ import { loadPlaybook } from './playbook';
 import {
   DECLARACAO_INSTRUCTION,
   declaracaoDoTurnoSchema,
+  normalizarDeclaracaoBruta,
   promessasEmAberto,
   type DeclaracaoDoTurno,
 } from './declaracao';
@@ -1066,6 +1067,16 @@ export function parseCheckpointText(text: string): CheckpointContent {
   } catch {
     throw new Error(
       'JSON de checkpoint inválido no fechamento do turno — run re-tentado pela fila',
+    );
+  }
+  // Modelo barato às vezes acerta o conteúdo e erra o rótulo de uma chave
+  // dentro de declaracao.intencoes[] (medido: "evidence" em vez de "evidencia",
+  // gpt-4.1-nano, purpose checkpoint) — normaliza ALIASES CONHECIDOS antes do
+  // Zod, pra não descartar um checkpoint certo por causa de um rótulo errado.
+  // Ver o porquê completo em normalizarDeclaracaoBruta (declaracao.ts).
+  if (raw !== null && typeof raw === 'object' && 'declaracao' in raw) {
+    (raw as Record<string, unknown>).declaracao = normalizarDeclaracaoBruta(
+      (raw as Record<string, unknown>).declaracao,
     );
   }
   const parsed = checkpointContentSchema.safeParse(raw);

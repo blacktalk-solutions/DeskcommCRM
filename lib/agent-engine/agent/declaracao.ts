@@ -140,3 +140,51 @@ export function renderDeclaracaoParaHumano(declaracao: DeclaracaoDoTurno | null)
 export function promessasEmAberto(declaracao: DeclaracaoDoTurno | null): Promessa[] {
   return declaracao === null ? [] : declaracao.promessas;
 }
+
+/**
+ * Conserta um desvio ESTREITO e MEDIDO, não uma via de escape para `.strict()`.
+ *
+ * Reproduzido direto contra o modelo (2026-09-14, gpt-4.1-nano, purpose
+ * `checkpoint`, 1 em 5 tentativas com o mesmo turno sintético): o modelo
+ * escreveu `{"o_que": "...", "evidence": "..."}` dentro de `intencoes[]` —
+ * conteúdo certo, chave em inglês em vez de "evidencia". Como `intencaoSchema`
+ * não é `.strict()`, a chave estranha é descartada em silêncio pelo Zod e o
+ * campo OBRIGATÓRIO `evidencia` fica faltando — `invalid_type`, e o checkpoint
+ * inteiro (junto com commitments/rolling_summary que vieram certos) é
+ * descartado e o turno inteiro re-tenta pela fila, dobrando o custo sem
+ * garantia de que o retry acerte.
+ *
+ * Só renomeia para o nome canônico quando a chave bate com um alias CADASTRADO
+ * e medido aqui — nunca aceita chave nova. Uma chave de verdade inventada
+ * continua caindo no erro de ensino que `declaracaoDoTurnoSchema.strict()`
+ * existe para dar; isto não relaxa aquele contrato, só evita que uma tradução
+ * de rótulo seja punida como se fosse invenção de estrutura.
+ */
+const ALIASES_DE_CHAVE_DE_INTENCAO: Record<string, 'evidencia'> = {
+  evidence: 'evidencia',
+};
+
+/**
+ * Normaliza o JSON CRU de `declaracao` antes da validação — ver o porquê acima.
+ * Recebe `unknown` porque roda antes de qualquer parse, e devolve `unknown`
+ * pelo mesmo motivo: quem chama passa o resultado direto para o Zod, que é
+ * quem de fato decide se o shape é válido.
+ */
+export function normalizarDeclaracaoBruta(valor: unknown): unknown {
+  if (valor === null || typeof valor !== 'object' || Array.isArray(valor)) return valor;
+  const obj = valor as Record<string, unknown>;
+  if (!Array.isArray(obj.intencoes)) return valor;
+  const intencoes = obj.intencoes.map((item) => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) return item;
+    const itemObj = item as Record<string, unknown>;
+    if ('evidencia' in itemObj) return itemObj; // já veio certo — não mexe
+    for (const [alias, canonico] of Object.entries(ALIASES_DE_CHAVE_DE_INTENCAO)) {
+      if (alias in itemObj) {
+        const { [alias]: valorDoAlias, ...resto } = itemObj;
+        return { ...resto, [canonico]: valorDoAlias };
+      }
+    }
+    return itemObj;
+  });
+  return { ...obj, intencoes };
+}
