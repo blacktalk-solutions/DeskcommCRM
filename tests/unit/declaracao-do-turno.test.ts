@@ -85,6 +85,31 @@ describe("declaração do turno — o contrato", () => {
         parseCheckpointText('{"rolling_summary":"x","declaracao":{"intencoes":"nao é lista"}}'),
       ).toThrow();
     });
+
+    it("chave em inglês num item de intenção é normalizada, não rejeitada (medido: gpt-4.1-nano escreveu evidence em vez de evidencia)", () => {
+      const c = parseCheckpointText(
+        '{"rolling_summary":"x","declaracao":{"intencoes":' +
+          '[{"o_que":"quer remarcar","evidence":"não vou poder terça"}],' +
+          '"promessas":[],"nada_a_declarar":false}}',
+      );
+      expect(c.declaracao?.intencoes[0]).toEqual({
+        o_que: "quer remarcar",
+        evidencia: "não vou poder terça",
+      });
+    });
+
+    it("chave alias NÃO abre uma porta pra invenção — outra chave estranha continua rejeitada", () => {
+      // O alias cobre só o par cadastrado (evidence→evidencia). Qualquer outra
+      // chave nova continua sendo erro de ensino — a normalização não virou
+      // um .passthrough() disfarçado.
+      expect(() =>
+        parseCheckpointText(
+          '{"rolling_summary":"x","declaracao":{"intencoes":' +
+            '[{"o_que":"quer remarcar","confidence":0.9}],' +
+            '"promessas":[],"nada_a_declarar":false}}',
+        ),
+      ).toThrow();
+    });
   });
 
   describe("a instrução que o Conversador lê", () => {
